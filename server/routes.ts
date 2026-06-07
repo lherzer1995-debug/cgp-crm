@@ -5,7 +5,9 @@ import { insertCustomerSchema, insertNoteSchema, insertActivitySchema } from "@s
 import { z } from "zod";
 import multer from "multer";
 import mammoth from "mammoth";
-import pdfParse from "pdf-parse";
+import pdfParseLib from "pdf-parse";
+// Workaround für ESM/CJS Bundle-Kompatibilität
+const pdfParse = (pdfParseLib as any).default ?? pdfParseLib;
 import { syncActivityToCalendar, gcalConfigured } from "./gcalDirect";
 import { parseGermanDateTime } from "./dateParser";
 
