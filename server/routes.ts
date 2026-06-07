@@ -10,7 +10,7 @@ import { execFileSync } from "child_process";
 import { writeFileSync, unlinkSync, readFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
-import { createCalendarEvent } from "./gcal";
+import { syncActivityToCalendar, gcalConfigured } from "./gcalDirect";
 import { parseGermanDateTime } from "./dateParser";
 
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {
@@ -329,25 +329,23 @@ export function registerRoutes(httpServer: Server, app: Express) {
     if (!result.success) return res.status(400).json({ message: result.error.message });
     const activity = storage.createActivity(result.data);
 
-    // —— Google Calendar Sync via GCAL_WEBHOOK_URL ——
-    if (activity.dueDate) {
+    // —— Direkter Google Calendar Sync (OAuth2, kein Perplexity nötig) ——
+    if (activity.dueDate && gcalConfigured()) {
       const customer = storage.getCustomer(activity.customerId);
-      const typeLabel = ACTIVITY_TYPE_LABELS[activity.type] || activity.type;
-      const timeStr = (body.dueTime as string | null) ?? "09:00";
-      const [hh, mm] = timeStr.split(":").map(Number);
-      const endHH = String(Math.min(hh + 1, 23)).padStart(2, "0");
-      const startDT = `${activity.dueDate}T${timeStr}:00+02:00`;
-      const endDT   = `${activity.dueDate}T${endHH}:${String(mm).padStart(2, "0")}:00+02:00`;
-
-      createCalendarEvent({
-        title: `[CGP CRM] ${typeLabel}: ${customer?.companyName ?? "Kunde"}`,
-        description: `${activity.description}\n\nKunde: ${customer?.companyName ?? ""}\nKontakt: ${customer?.contactName ?? ""}\nTelefon: ${customer?.phone ?? ""}\nStatus: ${customer?.status ?? ""}`,
-        startDateTime: startDT,
-        endDateTime: endDT,
-        customerName: customer?.companyName ?? "",
-        activityType: activity.type,
-      }).then((r) => {
-        if (!r.success) console.log("[GCal] skipped:", r.message);
+      syncActivityToCalendar(
+        {
+          id: activity.id,
+          type: activity.type,
+          description: activity.description,
+          dueDate: activity.dueDate,
+          dueTime: activity.dueTime,
+        },
+        customer?.companyName ?? "Kunde"
+      ).then((eventId) => {
+        storage.updateActivity(activity.id, { calendarEventId: eventId });
+        console.log(`[GCal] Event erstellt: ${eventId}`);
+      }).catch((err) => {
+        console.error("[GCal] Sync fehlgeschlagen:", err.message);
       });
     }
 
@@ -370,7 +368,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // ── Settings ──────────────────────────────────────────────────────────────
   app.get("/api/settings", (_req, res) => {
     res.json({
-      gcalConfigured: !!process.env.GCAL_WEBHOOK_URL,
+      gcalConfigured: gcalConfigured(),
     });
   });
 
