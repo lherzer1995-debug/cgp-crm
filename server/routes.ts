@@ -4,12 +4,8 @@ import { storage } from "./storage";
 import { insertCustomerSchema, insertNoteSchema, insertActivitySchema } from "@shared/schema";
 import { z } from "zod";
 import multer from "multer";
-// Anthropic SDK import removed — using rule-based parser instead (works in published sites)
 import mammoth from "mammoth";
-import { execFileSync } from "child_process";
-import { writeFileSync, unlinkSync, readFileSync } from "fs";
-import { tmpdir } from "os";
-import { join } from "path";
+import pdfParse from "pdf-parse";
 import { syncActivityToCalendar, gcalConfigured } from "./gcalDirect";
 import { parseGermanDateTime } from "./dateParser";
 
@@ -26,23 +22,13 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 
 async function extractTextFromBuffer(buffer: Buffer, mimetype: string): Promise<string> {
   if (mimetype === "application/pdf" || mimetype === "application/x-pdf") {
-    // Use pdftotext CLI — most reliable for text extraction
-    const tmpIn  = join(tmpdir(), `contract_${Date.now()}.pdf`);
-    const tmpOut = join(tmpdir(), `contract_${Date.now()}.txt`);
-    try {
-      // Validate PDF magic bytes before processing
-      if (!buffer.slice(0, 4).equals(Buffer.from("%PDF"))) {
-        throw new Error("Ungültiges Dateiformat: Kein gültiges PDF");
-      }
-      writeFileSync(tmpIn, buffer);
-      // Use execFileSync with array args to prevent command injection
-      execFileSync("/usr/bin/pdftotext", [tmpIn, tmpOut]);
-      const text = readFileSync(tmpOut, "utf-8");
-      return text;
-    } finally {
-      try { unlinkSync(tmpIn); } catch {}
-      try { unlinkSync(tmpOut); } catch {}
+    // Validate PDF magic bytes
+    if (!buffer.slice(0, 4).equals(Buffer.from("%PDF"))) {
+      throw new Error("Ungültiges Dateiformat: Kein gültiges PDF");
     }
+    // Use pdf-parse — works everywhere without system tools
+    const data = await pdfParse(buffer);
+    return data.text;
   } else if (
     mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     mimetype === "application/msword"
