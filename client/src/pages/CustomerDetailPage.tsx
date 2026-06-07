@@ -1,0 +1,763 @@
+import { useState } from "react";
+import { useParams, Link } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest, API_BASE } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  ArrowLeft, Phone, Mail, MapPin, Building2, Euro, CreditCard,
+  Plus, Trash2, CheckSquare, Square, Calendar, FileText, Pencil, Loader2, Sparkles, CalendarCheck,
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import type { Customer, Note, Activity, InsertNote, InsertActivity } from "@shared/schema";
+
+const STATUS_LABEL: Record<string, string> = {
+  lead: "Lead", prospect: "Prospect", active: "Aktiv", churned: "Abgewandert",
+};
+const STATUS_CLASS: Record<string, string> = {
+  lead: "badge-lead", prospect: "badge-prospect", active: "badge-active", churned: "badge-churned",
+};
+const NOTE_TYPES: Record<string, string> = {
+  note: "Notiz", call: "Anruf", meeting: "Meeting", email: "E-Mail",
+};
+const ACT_TYPES: Record<string, string> = {
+  call: "Anruf", demo: "Demo", proposal: "Angebot", follow_up: "Follow-up",
+  meeting: "Meeting", email: "E-Mail", closed_won: "Abschluss ✓", closed_lost: "Verloren",
+};
+const ACT_CLASS: Record<string, string> = {
+  call: "act-call", demo: "act-demo", proposal: "act-proposal",
+  follow_up: "act-follow_up", closed_won: "act-closed_won", closed_lost: "act-closed_lost",
+  meeting: "text-indigo-600 dark:text-indigo-400", email: "text-cyan-600 dark:text-cyan-400",
+};
+
+function InfoRow({ icon: Icon, label, value, href }: { icon: any; label: string; value?: string | null; href?: string }) {
+  if (!value) return null;
+  return (
+    <div className="flex items-start gap-3">
+      <Icon className="w-4 h-4 text-muted-foreground mt-0.5 shrink-0" />
+      <div>
+        <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">{label}</p>
+        {href ? (
+          <a
+            href={href}
+            className="text-sm text-primary font-medium hover:underline"
+          >
+            {value}
+          </a>
+        ) : (
+          <p className="text-sm text-foreground font-medium">{value}</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+export default function CustomerDetailPage() {
+  const { id } = useParams<{ id: string }>();
+  const custId = Number(id);
+  const { toast } = useToast();
+
+  const [activeTab, setActiveTab] = useState<"notes" | "activities">("notes");
+  const [noteDialog, setNoteDialog] = useState(false);
+  const [actDialog, setActDialog] = useState(false);
+  const [deleteNoteId, setDeleteNoteId] = useState<number | null>(null);
+  const [deleteActId, setDeleteActId] = useState<number | null>(null);
+
+  // Forms
+  const [noteForm, setNoteForm] = useState<Partial<InsertNote>>({ title: "", content: "", type: "note" });
+  const [actForm, setActForm] = useState<Partial<InsertActivity>>({ type: "call", description: "", dueDate: "", done: false });
+  const [rawDateText, setRawDateText] = useState("");
+  const [parsedDate, setParsedDate] = useState<{ display: string; iso: string; isoEnd: string; hasTime: boolean } | null>(null);
+  const [parseDateLoading, setParseDateLoading] = useState(false);
+  const [parseDateError, setParseDateError] = useState("");
+
+  // Queries
+  const { data: customer, isLoading: cLoad } = useQuery<Customer>({
+    queryKey: ["/api/customers", custId],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/customers/${custId}`);
+      return r.json();
+    },
+  });
+  const { data: notes = [], isLoading: nLoad } = useQuery<Note[]>({
+    queryKey: ["/api/customers", custId, "notes"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/customers/${custId}/notes`);
+      return r.json();
+    },
+  });
+  const { data: activities = [], isLoading: aLoad } = useQuery<Activity[]>({
+    queryKey: ["/api/customers", custId, "activities"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/customers/${custId}/activities`);
+      return r.json();
+    },
+  });
+
+  // Mutations — Notes
+  const createNote = useMutation({
+    mutationFn: (d: Partial<InsertNote>) => apiRequest("POST", `/api/customers/${custId}/notes`, d),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId, "notes"] });
+      setNoteDialog(false);
+      setNoteForm({ title: "", content: "", type: "note" });
+      toast({ title: "Notiz gespeichert" });
+    },
+  });
+  const deleteNote = useMutation({
+    mutationFn: (nid: number) => apiRequest("DELETE", `/api/notes/${nid}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId, "notes"] });
+      setDeleteNoteId(null);
+    },
+  });
+
+  // Mutations — Activities
+  const createActivity = useMutation({
+    mutationFn: (d: Partial<InsertActivity>) => apiRequest("POST", `/api/customers/${custId}/activities`, d),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId, "activities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
+      setActDialog(false);
+      setActForm({ type: "call", description: "", dueDate: "", done: false });
+      setRawDateText("");
+      setParsedDate(null);
+      setParseDateError("");
+      toast({ title: "Aktivität erstellt", description: parsedDate ? "→ Wird in Google Kalender eingetragen" : undefined });
+    },
+    onError: (err: any) => {
+      toast({ title: "Fehler beim Speichern", description: err.message ?? "Unbekannter Fehler", variant: "destructive" });
+    },
+  });
+  const toggleActivity = useMutation({
+    mutationFn: ({ aid, done }: { aid: number; done: boolean }) =>
+      apiRequest("PATCH", `/api/activities/${aid}`, { done }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId, "activities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
+    },
+  });
+  const deleteActivity = useMutation({
+    mutationFn: (aid: number) => apiRequest("DELETE", `/api/activities/${aid}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId, "activities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
+      setDeleteActId(null);
+    },
+  });
+
+  if (cLoad) {
+    return (
+      <div className="space-y-4">
+        <Skeleton className="h-8 w-48" />
+        <Skeleton className="h-40 w-full" />
+        <Skeleton className="h-60 w-full" />
+      </div>
+    );
+  }
+
+  if (!customer) {
+    return (
+      <div className="text-center py-20">
+        <p className="text-muted-foreground">Kunde nicht gefunden.</p>
+        <Link href="/customers"><a className="text-primary text-sm hover:underline mt-2 inline-block">← Zurück zu Kunden</a></Link>
+      </div>
+    );
+  }
+
+  const pendingActs = activities.filter((a) => !a.done).length;
+
+  return (
+    <div className="space-y-5 max-w-5xl">
+      {/* Back + Title */}
+      <div className="flex items-center gap-3">
+        <Link href="/customers">
+          <a className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
+            <ArrowLeft className="w-4 h-4" /> Kunden
+          </a>
+        </Link>
+      </div>
+
+      {/* Header card */}
+      <Card className="overflow-hidden">
+        <div className="h-1.5 bg-[#0052CC]" />
+        <CardContent className="p-5">
+          <div className="flex items-start gap-4 flex-wrap">
+            {/* Avatar */}
+            <div className="w-14 h-14 rounded-xl bg-primary/10 border-2 border-primary/20 flex items-center justify-center shrink-0">
+              <span className="text-xl font-black text-primary">
+                {customer.companyName.charAt(0).toUpperCase()}
+              </span>
+            </div>
+            {/* Name + meta */}
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start gap-3 flex-wrap">
+                <h1 className="text-xl font-bold text-foreground">{customer.companyName}</h1>
+                <Badge variant="secondary" className={cn("border-0 font-semibold", STATUS_CLASS[customer.status])}>
+                  {STATUS_LABEL[customer.status]}
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">{customer.contactName}</p>
+              {customer.industry && (
+                <p className="text-xs text-muted-foreground mt-0.5">{customer.industry}</p>
+              )}
+            </div>
+            {/* Quick stats */}
+            {customer.paymentVolume && (
+              <div className="text-right shrink-0">
+                <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-bold">Monatl. Volumen</p>
+                <p className="text-2xl font-black text-primary mt-0.5">
+                  € {customer.paymentVolume.toLocaleString("de-DE")}
+                </p>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Info + Payment grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Contact info */}
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Building2 className="w-4 h-4 text-primary" /> Kontaktdaten
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-3">
+            <InfoRow icon={Mail} label="E-Mail" value={customer.email} href={customer.email ? `mailto:${customer.email}` : undefined} />
+            <InfoRow icon={Phone} label="Telefon" value={customer.phone} href={customer.phone ? `tel:${customer.phone.replace(/\s/g, "")}` : undefined} />
+            <InfoRow icon={MapPin} label="Stadt / Land" value={[customer.city, customer.country].filter(Boolean).join(", ")} />
+          </CardContent>
+        </Card>
+
+        {/* Payment info */}
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <CreditCard className="w-4 h-4 text-primary" /> Zahlungsinformationen
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-3">
+            <InfoRow icon={Euro} label="Zahlungsmethode" value={
+              customer.paymentMethod === "card" ? "Kartenzahlung" :
+              customer.paymentMethod === "sepa" ? "SEPA-Lastschrift" :
+              customer.paymentMethod === "instant" ? "Echtzeit-Überweisung" :
+              customer.paymentMethod ?? undefined
+            } />
+            <InfoRow icon={Building2} label="Bank" value={customer.bankName} />
+            <InfoRow icon={CreditCard} label="IBAN" value={customer.iban} />
+            <InfoRow icon={FileText} label="Berater" value={customer.commerzAccountManager} />
+            {customer.selectedProduct && (
+              <InfoRow icon={CreditCard} label="Gewähltes Produkt" value={customer.selectedProduct} />
+            )}
+            {(customer.contractStart || customer.contractEnd) && (
+              <InfoRow icon={Calendar} label="Vertragszeitraum" value={
+                [customer.contractStart && new Date(customer.contractStart).toLocaleDateString("de-DE"),
+                 customer.contractEnd && new Date(customer.contractEnd).toLocaleDateString("de-DE")]
+                  .filter(Boolean).join(" – ")
+              } />
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Disagio-Karten */}
+      {(customer.girocardDisagio != null || customer.creditcardDisagio != null) && (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+          {/* Girocard */}
+          {customer.girocardDisagio != null && (
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-sm bg-primary" />
+                  Girocard — Disagio-Struktur
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 space-y-3">
+                {/* Gesamt */}
+                <div className="flex justify-between items-center py-1.5 border-b border-border">
+                  <span className="text-xs font-bold text-foreground">Gesamt-Disagio (Händler zahlt)</span>
+                  <span className="text-sm font-black text-primary">{customer.girocardDisagio.toFixed(3)} %</span>
+                </div>
+                {/* Aufschlüsselung */}
+                {[
+                  { label: "Interchange (an Hausbank)", val: customer.girocardInterchange, color: "bg-blue-500", tip: "EU max. 0,20 %" },
+                  { label: "Scheme Fee (ans DK-Netz)", val: customer.girocardSchemeFee, color: "bg-indigo-400", tip: "Girocard-Netzgebühr" },
+                  { label: "Acquirer-Marge (CGP)", val: customer.girocardAcquirer, color: "bg-[#FFD100]", tip: "Commerz Globalpay" },
+                ].map(({ label, val, color, tip }) => val != null && (
+                  <div key={label}>
+                    <div className="flex justify-between mb-1">
+                      <div>
+                        <span className="text-xs text-foreground font-medium">{label}</span>
+                        <span className="text-[10px] text-muted-foreground ml-1">({tip})</span>
+                      </div>
+                      <span className="text-xs font-bold text-foreground">{val.toFixed(3)} %</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                      <div
+                        className={cn("h-full rounded-full", color)}
+                        style={{ width: `${customer.girocardDisagio! > 0 ? (val / customer.girocardDisagio!) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Kreditkarte */}
+          {customer.creditcardDisagio != null && (
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-sm bg-amber-400" />
+                  Kreditkarte (Visa / MC) — Disagio-Struktur
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 space-y-3">
+                {/* Gesamt */}
+                <div className="flex justify-between items-center py-1.5 border-b border-border">
+                  <span className="text-xs font-bold text-foreground">Gesamt-Disagio (Händler zahlt)</span>
+                  <span className="text-sm font-black text-primary">{customer.creditcardDisagio.toFixed(3)} %</span>
+                </div>
+                {/* Aufschlüsselung */}
+                {[
+                  { label: "Interchange (an kartenausg. Bank)", val: customer.creditcardInterchange, color: "bg-amber-500", tip: "EU max. 0,30 %" },
+                  { label: "Scheme Fee (an Visa / Mastercard)", val: customer.creditcardSchemeFee, color: "bg-orange-400", tip: "Netzgebühr" },
+                  { label: "Acquirer-Marge (CGP)", val: customer.creditcardAcquirer, color: "bg-[#FFD100]", tip: "Commerz Globalpay" },
+                ].map(({ label, val, color, tip }) => val != null && (
+                  <div key={label}>
+                    <div className="flex justify-between mb-1">
+                      <div>
+                        <span className="text-xs text-foreground font-medium">{label}</span>
+                        <span className="text-[10px] text-muted-foreground ml-1">({tip})</span>
+                      </div>
+                      <span className="text-xs font-bold text-foreground">{val.toFixed(3)} %</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                      <div
+                        className={cn("h-full rounded-full", color)}
+                        style={{ width: `${customer.creditcardDisagio! > 0 ? (val / customer.creditcardDisagio!) * 100 : 0}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {/* Tabs: Notes / Activities */}
+      <div>
+        {/* Tab bar */}
+        <div className="flex border-b border-border mb-4">
+          {([
+            { key: "notes", label: "Notizen", count: notes.length },
+            { key: "activities", label: "Aktivitäten", count: pendingActs > 0 ? pendingActs : activities.length },
+          ] as const).map(({ key, label, count }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              data-testid={`tab-${key}`}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors",
+                activeTab === key
+                  ? "border-primary text-primary"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {label}
+              <span className={cn(
+                "text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
+                activeTab === key ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
+              )}>
+                {count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {/* Notes panel */}
+        {activeTab === "notes" && (
+          <div className="space-y-3">
+            <div className="flex justify-end">
+              <Button size="sm" className="gap-2" onClick={() => setNoteDialog(true)} data-testid="button-add-note">
+                <Plus className="w-3.5 h-3.5" /> Notiz hinzufügen
+              </Button>
+            </div>
+            {nLoad ? (
+              <div className="space-y-2">{[1, 2].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div>
+            ) : notes.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground">
+                <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Noch keine Notizen</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {[...notes].reverse().map((n) => (
+                  <Card key={n.id} data-testid={`note-card-${n.id}`}>
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                              {NOTE_TYPES[n.type] ?? n.type}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(n.createdAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
+                            </span>
+                          </div>
+                          <p className="text-sm font-semibold text-foreground">{n.title}</p>
+                          <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{n.content}</p>
+                        </div>
+                        <Button
+                          variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteNoteId(n.id)}
+                          data-testid={`button-delete-note-${n.id}`}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Activities panel — Timeline */}
+        {activeTab === "activities" && (
+          <div className="space-y-3">
+            <div className="flex justify-end">
+              <Button size="sm" className="gap-2" onClick={() => setActDialog(true)} data-testid="button-add-activity">
+                <Plus className="w-3.5 h-3.5" /> Aktivität hinzufügen
+              </Button>
+            </div>
+            {aLoad ? (
+              <div className="space-y-4 pl-6">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+            ) : activities.length === 0 ? (
+              <div className="text-center py-10 text-muted-foreground">
+                <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <p className="text-sm">Noch keine Aktivitäten</p>
+              </div>
+            ) : (
+              <div className="relative pl-6">
+                {/* Vertical line */}
+                <div className="absolute left-[9px] top-3 bottom-3 w-[2px] bg-border rounded-full" />
+
+                <div className="space-y-4">
+                  {[...activities]
+                    .sort((a, b) => {
+                      // Sort: undone first (by dueDate desc), then done
+                      if (a.done !== b.done) return a.done ? 1 : -1;
+                      const da = a.dueDate ?? a.createdAt ?? "";
+                      const db = b.dueDate ?? b.createdAt ?? "";
+                      return db > da ? 1 : -1;
+                    })
+                    .map((a) => {
+                      const isOverdue = !a.done && a.dueDate && new Date(a.dueDate) < new Date();
+                      return (
+                        <div
+                          key={a.id}
+                          className={cn("relative flex gap-4", a.done && "opacity-60")}
+                          data-testid={`activity-card-${a.id}`}
+                        >
+                          {/* Timeline dot */}
+                          <button
+                            onClick={() => toggleActivity.mutate({ aid: a.id, done: !a.done })}
+                            className="absolute -left-6 top-3 shrink-0 transition-colors"
+                            data-testid={`button-toggle-activity-${a.id}`}
+                            title={a.done ? "Als offen markieren" : "Als erledigt markieren"}
+                          >
+                            {a.done ? (
+                              <div className="w-[18px] h-[18px] rounded-full bg-green-500 flex items-center justify-center ring-2 ring-background">
+                                <CheckSquare className="w-3 h-3 text-white" />
+                              </div>
+                            ) : (
+                              <div className={cn(
+                                "w-[18px] h-[18px] rounded-full ring-2 ring-background border-2 transition-colors",
+                                isOverdue
+                                  ? "bg-destructive/20 border-destructive"
+                                  : "bg-background border-primary hover:bg-primary/10",
+                              )} />
+                            )}
+                          </button>
+
+                          {/* Card */}
+                          <div className={cn(
+                            "flex-1 rounded-lg border bg-card p-3 min-w-0",
+                            isOverdue && "border-destructive/40",
+                          )}>
+                            <div className="flex items-start gap-2">
+                              <div className="flex-1 min-w-0">
+                                {/* Type badge + date */}
+                                <div className="flex items-center gap-2 flex-wrap mb-1">
+                                  <span className={cn(
+                                    "text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded",
+                                    a.done
+                                      ? "bg-muted text-muted-foreground"
+                                      : cn("bg-primary/10", ACT_CLASS[a.type] ?? "text-muted-foreground"),
+                                  )}>
+                                    {ACT_TYPES[a.type] ?? a.type}
+                                  </span>
+                                  {a.dueDate && (
+                                    <span className={cn(
+                                      "text-[10px] flex items-center gap-1",
+                                      isOverdue ? "text-destructive font-semibold" : "text-muted-foreground",
+                                    )}>
+                                      <Calendar className="w-2.5 h-2.5" />
+                                      {new Date(a.dueDate).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}
+                                      {a.dueTime ? ` · ${a.dueTime} Uhr` : ""}
+                                      {isOverdue && <span className="font-bold"> · Überfällig</span>}
+                                    </span>
+                                  )}
+                                  {a.calendarEventId && (
+                                    <span className="text-[10px] flex items-center gap-1 text-green-600 dark:text-green-400">
+                                      <CalendarCheck className="w-2.5 h-2.5" /> Google Kalender
+                                    </span>
+                                  )}
+                                </div>
+                                {/* Description */}
+                                <p className={cn("text-sm text-foreground", a.done && "line-through text-muted-foreground")}>
+                                  {a.description}
+                                </p>
+                              </div>
+                              {/* Delete */}
+                              <Button
+                                variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive -mt-0.5 -mr-0.5"
+                                onClick={() => setDeleteActId(a.id)}
+                                data-testid={`button-delete-activity-${a.id}`}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Note Dialog */}
+      <Dialog open={noteDialog} onOpenChange={setNoteDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="w-4 h-4" /> Neue Notiz
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label>Typ</Label>
+              <Select value={noteForm.type} onValueChange={(v) => setNoteForm((f) => ({ ...f, type: v as any }))}>
+                <SelectTrigger data-testid="select-note-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(NOTE_TYPES).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="n-title">Titel</Label>
+              <Input id="n-title" value={noteForm.title} onChange={(e) => setNoteForm((f) => ({ ...f, title: e.target.value }))}
+                placeholder="Kurzer Titel" data-testid="input-note-title" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="n-content">Inhalt</Label>
+              <Textarea id="n-content" rows={4} value={noteForm.content}
+                onChange={(e) => setNoteForm((f) => ({ ...f, content: e.target.value }))}
+                placeholder="Notiz, Gesprächsprotokoll, Informationen…" data-testid="textarea-note-content" />
+            </div>
+            <div className="flex gap-3 justify-end pt-1">
+              <Button variant="outline" onClick={() => setNoteDialog(false)}>Abbrechen</Button>
+              <Button
+                onClick={() => {
+                  if (!noteForm.title?.trim() || !noteForm.content?.trim()) {
+                    toast({ title: "Titel und Inhalt erforderlich", variant: "destructive" }); return;
+                  }
+                  createNote.mutate(noteForm);
+                }}
+                disabled={createNote.isPending}
+                data-testid="button-save-note"
+              >
+                {createNote.isPending ? "Speichern…" : "Speichern"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Activity Dialog */}
+      <Dialog open={actDialog} onOpenChange={setActDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Calendar className="w-4 h-4" /> Neue Aktivität
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <div className="space-y-1.5">
+              <Label>Typ</Label>
+              <Select value={actForm.type} onValueChange={(v) => setActForm((f) => ({ ...f, type: v as any }))}>
+                <SelectTrigger data-testid="select-activity-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {Object.entries(ACT_TYPES).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="a-desc">Beschreibung</Label>
+              <Input id="a-desc" value={actForm.description}
+                onChange={(e) => setActForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Was wurde besprochen / geplant? (Pflichtfeld)" data-testid="input-activity-description" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="a-when">Wann? <span className="text-muted-foreground font-normal">(Freitext)</span></Label>
+              <div className="flex gap-2">
+                <Input
+                  id="a-when"
+                  value={rawDateText}
+                  onChange={(e) => {
+                    setRawDateText(e.target.value);
+                    setParsedDate(null);
+                    setParseDateError("");
+                  }}
+                  onKeyDown={async (e) => {
+                    if (e.key === "Enter" && rawDateText.trim()) {
+                      setParseDateLoading(true);
+                      try {
+                        const r = await fetch(`${API_BASE}/api/parse-date`, {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ text: rawDateText }),
+                        });
+                        const j = await r.json();
+                        if (!r.ok) { setParseDateError(j.message); return; }
+                        setParsedDate(j);
+                        setParseDateError("");
+                        setActForm((f) => ({ ...f, dueDate: j.iso.split("T")[0] }));
+                      } catch { setParseDateError("Verbindungsfehler"); }
+                      finally { setParseDateLoading(false); }
+                    }
+                  }}
+                  placeholder="z.B. morgen 14 Uhr · Freitag 9:30 · nächsten Montag"
+                  data-testid="input-activity-due-date"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  disabled={parseDateLoading || !rawDateText.trim()}
+                  onClick={async () => {
+                    if (!rawDateText.trim()) return;
+                    setParseDateLoading(true);
+                    try {
+                      const r = await fetch(`${API_BASE}/api/parse-date`, {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ text: rawDateText }),
+                      });
+                      const j = await r.json();
+                      if (!r.ok) { setParseDateError(j.message); return; }
+                      setParsedDate(j);
+                      setParseDateError("");
+                      setActForm((f) => ({ ...f, dueDate: j.iso.split("T")[0] }));
+                    } catch { setParseDateError("Verbindungsfehler"); }
+                    finally { setParseDateLoading(false); }
+                  }}
+                  data-testid="button-parse-date"
+                >
+                  {parseDateLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Sparkles className="w-4 h-4 text-[#0052CC]" />}
+                </Button>
+              </div>
+              {parsedDate && (
+                <div className="flex items-center gap-2 text-[12px] text-green-700 dark:text-green-400 bg-green-50 dark:bg-green-950/30 rounded-md px-3 py-1.5">
+                  <CalendarCheck className="w-3.5 h-3.5 shrink-0" />
+                  <span>{parsedDate.display} · wird in Google Kalender eingetragen</span>
+                </div>
+              )}
+              {parseDateError && (
+                <p className="text-[12px] text-destructive">{parseDateError}</p>
+              )}
+              {!parsedDate && !parseDateError && rawDateText && (
+                <p className="text-[11px] text-muted-foreground">Enter drücken oder ✨ klicken zum Erkennen</p>
+              )}
+            </div>
+            <div className="flex gap-3 justify-end pt-1">
+              <Button variant="outline" onClick={() => setActDialog(false)}>Abbrechen</Button>
+              <Button
+                onClick={() => {
+                  if (!actForm.description?.trim()) {
+                    toast({ title: "Bitte Beschreibung eingeben", description: "Was soll bei diesem Termin besprochen / erledigt werden?", variant: "destructive" }); return;
+                  }
+                  createActivity.mutate({ ...actForm, rawDateText: rawDateText || undefined } as any);
+                }}
+                disabled={createActivity.isPending || !actForm.description?.trim()}
+                data-testid="button-save-activity"
+              >
+                {createActivity.isPending ? "Speichern…" : "Speichern"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete Note */}
+      <AlertDialog open={deleteNoteId !== null} onOpenChange={(o) => !o && setDeleteNoteId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Notiz löschen?</AlertDialogTitle>
+            <AlertDialogDescription>Diese Aktion kann nicht rückgängig gemacht werden.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteNoteId && deleteNote.mutate(deleteNoteId)}>
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete Activity */}
+      <AlertDialog open={deleteActId !== null} onOpenChange={(o) => !o && setDeleteActId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Aktivität löschen?</AlertDialogTitle>
+            <AlertDialogDescription>Diese Aktion kann nicht rückgängig gemacht werden.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteActId && deleteActivity.mutate(deleteActId)}>
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  );
+}
