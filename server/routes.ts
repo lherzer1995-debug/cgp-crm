@@ -5,9 +5,20 @@ import { insertCustomerSchema, insertNoteSchema, insertActivitySchema } from "@s
 import { z } from "zod";
 import multer from "multer";
 import mammoth from "mammoth";
-import pdfParseLib from "pdf-parse";
-// Workaround für ESM/CJS Bundle-Kompatibilität
-const pdfParse = (pdfParseLib as any).default ?? pdfParseLib;
+// PDF Text-Extraktion ohne externe System-Tools
+async function extractPdfText(buffer: Buffer): Promise<string> {
+  // Dynamischer Import um Bundle-Probleme zu vermeiden
+  const pdfjsLib = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(buffer) }).promise;
+  const pages: string[] = [];
+  for (let i = 1; i <= pdf.numPages; i++) {
+    const page = await pdf.getPage(i);
+    const content = await page.getTextContent();
+    const text = content.items.map((item: any) => item.str).join(" ");
+    pages.push(text);
+  }
+  return pages.join("\n");
+}
 import { syncActivityToCalendar, gcalConfigured } from "./gcalDirect";
 import { parseGermanDateTime } from "./dateParser";
 
@@ -28,9 +39,8 @@ async function extractTextFromBuffer(buffer: Buffer, mimetype: string): Promise<
     if (!buffer.slice(0, 4).equals(Buffer.from("%PDF"))) {
       throw new Error("Ungültiges Dateiformat: Kein gültiges PDF");
     }
-    // Use pdf-parse — works everywhere without system tools
-    const data = await pdfParse(buffer);
-    return data.text;
+    // Use pdfjs-dist — works everywhere without system tools
+    return extractPdfText(buffer);
   } else if (
     mimetype === "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
     mimetype === "application/msword"
