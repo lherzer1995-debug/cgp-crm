@@ -315,7 +315,6 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.get("/api/customers/:id/activities", (req, res) => {
     res.json(storage.getActivities(Number(req.params.id)));
   });
-
   app.post("/api/customers/:id/activities", async (req, res) => {
     // Free-text date: rawDateText -> dueDate + dueTime
     const body: any = { ...req.body, customerId: Number(req.params.id) };
@@ -332,8 +331,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
     const activity = storage.createActivity(result.data);
 
     // —— Direkter Google Calendar Sync (OAuth2, kein Perplexity nötig) ——
+    // The activity is always created and returned — a calendar sync failure
+    // must never prevent the user from saving their work.
     if (activity.dueDate && gcalConfigured()) {
       const customer = storage.getCustomer(activity.customerId);
+      const companyName = customer?.companyName ?? "Kunde";
+      console.log(`[GCal] Triggering immediate sync for new activity ${activity.id} (customer: "${companyName}")`);
       syncActivityToCalendar(
         {
           id: activity.id,
@@ -342,13 +345,16 @@ export function registerRoutes(httpServer: Server, app: Express) {
           dueDate: activity.dueDate,
           dueTime: activity.dueTime,
         },
-        customer?.companyName ?? "Kunde"
+        companyName
       ).then((eventId) => {
         storage.updateActivity(activity.id, { calendarEventId: eventId });
-        console.log(`[GCal] Event erstellt: ${eventId}`);
-      }).catch((err) => {
-        console.error("[GCal] Sync fehlgeschlagen:", err.message);
+        console.log(`[GCal] Activity ${activity.id} linked to calendar event ${eventId}`);
+      }).catch((err: any) => {
+        // Non-fatal: the background sync will retry this activity on the next tick
+        console.error(`[GCal] Immediate sync failed for activity ${activity.id} — will retry in background. Reason: ${err.message}`);
       });
+    } else if (activity.dueDate && !gcalConfigured()) {
+      console.log(`[GCal] Calendar not configured — activity ${activity.id} will be synced once connected`);
     }
 
     res.status(201).json(activity);
@@ -361,6 +367,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     if (!activity) return res.status(404).json({ message: "Aktivität nicht gefunden" });
     res.json(activity);
   });
+
 
   app.delete("/api/activities/:id", (req, res) => {
     storage.deleteActivity(Number(req.params.id));

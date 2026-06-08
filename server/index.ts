@@ -107,15 +107,14 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
-
       // ── Periodic Google Calendar background sync ──────────────────────────
-      // Runs every 4 minutes and syncs any activity that has a dueDate but
-      // no calendarEventId yet.  Fires once immediately on startup so that
+      // Runs every 5 minutes and syncs any activity that has a dueDate but
+      // no calendarEventId yet.  Fires once shortly after startup so that
       // activities created while the server was offline are caught quickly.
       // The interval always runs; syncAllActivitiesToCalendar() is a no-op
       // when no token is available, so connecting via OAuth mid-session will
       // automatically start syncing on the next tick.
-      const SYNC_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
+      const SYNC_INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
       const runSync = () => {
         syncAllActivitiesToCalendar().catch((err) => {
@@ -127,7 +126,7 @@ app.use((req, res, next) => {
       setTimeout(runSync, 10_000);
       setInterval(runSync, SYNC_INTERVAL_MS);
 
-      log(`Google Calendar background sync scheduled every ${SYNC_INTERVAL_MS / 1000}s`, "gcal");
+      log(`Google Calendar background sync scheduled every ${SYNC_INTERVAL_MS / 1000}s (token loaded: ${!!process.env.GCAL_REFRESH_TOKEN || "from disk"})`, "gcal");
     },
   );
 })();
