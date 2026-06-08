@@ -122,8 +122,19 @@ export async function syncActivityToCalendar(activity: {
     end: { dateTime: endISO, timeZone: "Europe/Berlin" },
   };
 
-  return createCalendarEvent(event);
+  console.log(`[GCal] Syncing activity ${activity.id} (${typeLabel}) for "${companyName}" on ${activity.dueDate} at ${timeStr}`);
+
+  try {
+    const eventId = await createCalendarEvent(event);
+    console.log(`[GCal] Successfully created calendar event ${eventId} for activity ${activity.id}`);
+    return eventId;
+  } catch (err: any) {
+    console.error(`[GCal] Failed to create calendar event for activity ${activity.id} ("${companyName}", ${activity.dueDate}): ${err.message}`);
+    // Re-throw so the caller (route handler or background sync) can react appropriately
+    throw err;
+  }
 }
+
 
 export function gcalConfigured(): boolean {
   return !!(process.env.GCAL_CLIENT_ID && process.env.GCAL_CLIENT_SECRET && gcalTokenAvailable());
