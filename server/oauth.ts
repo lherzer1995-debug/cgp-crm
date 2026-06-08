@@ -83,6 +83,33 @@ export function getRefreshToken(): string | null {
   return _token?.refreshToken ?? process.env.GCAL_REFRESH_TOKEN ?? null;
 }
 
+// ── GCal Guard Middleware ─────────────────────────────────────────────────────
+/**
+ * Blocks all CRM API routes with a 401 until the user has connected their
+ * Google Calendar. The OAuth endpoints themselves are always allowed through
+ * so the setup flow can complete.
+ *
+ * Usage in index.ts (register BEFORE registerRoutes):
+ *   import { requireGCalConnected } from "./oauth";
+ *   app.use("/api", requireGCalConnected);
+ */
+export function requireGCalConnected(
+  req: import("express").Request,
+  res: import("express").Response,
+  next: import("express").NextFunction,
+): void {
+  // Always let the OAuth flow endpoints through
+  if (req.path.startsWith("/oauth/google")) return next();
+
+  if (gcalTokenAvailable()) return next();
+
+  res.status(401).json({
+    error: "gcal_not_connected",
+    message:
+      "Google Kalender ist noch nicht verbunden. Bitte verbinde zuerst deinen Google Kalender unter Einstellungen.",
+  });
+}
+
 // ── OAuth helpers ────────────────────────────────────────────────────────────
 const REDIRECT_URI = "https://cgp-crm-production.up.railway.app/api/oauth/google/callback";
 
@@ -185,22 +212,23 @@ export function registerOAuthRoutes(app: Express): void {
 
     if (error) {
       console.error("[OAuth] Google returned error:", error);
-      return res.redirect("/#/settings?gcal=error&reason=" + encodeURIComponent(error));
+      return res.redirect("/?gcal=error&reason=" + encodeURIComponent(error));
     }
 
     if (!code) {
-      return res.redirect("/#/settings?gcal=error&reason=no_code");
+      return res.redirect("/?gcal=error&reason=no_code");
     }
 
     try {
       const { refreshToken, email } = await exchangeCodeForTokens(code);
       saveToken({ refreshToken, email, connectedAt: new Date().toISOString() });
       console.log("[OAuth] Google Calendar connected", email ? `(${email})` : "");
-      return res.redirect("/#/settings?gcal=success");
+      // Redirect to app root — the frontend detects ?gcal=success and shows a toast
+      return res.redirect("/?gcal=success");
     } catch (err: any) {
       console.error("[OAuth] Callback error:", err.message);
       return res.redirect(
-        "/#/settings?gcal=error&reason=" + encodeURIComponent(err.message)
+        "/?gcal=error&reason=" + encodeURIComponent(err.message)
       );
     }
   });
