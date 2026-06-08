@@ -1,7 +1,13 @@
 /**
  * Direct Google Calendar integration using OAuth2 refresh token.
  * No Perplexity connector needed — works standalone on Railway.
+ *
+ * The refresh token is read from the oauth module (which loads it from
+ * /data/gcal-token.json on startup) with a fallback to the GCAL_REFRESH_TOKEN
+ * env var for backwards compatibility.
  */
+
+import { getRefreshToken, gcalTokenAvailable } from "./oauth";
 
 interface GCalEvent {
   summary: string;
@@ -10,16 +16,28 @@ interface GCalEvent {
   end: { dateTime: string; timeZone: string };
 }
 
-const GCAL_CLIENT_ID = process.env.GCAL_CLIENT_ID!;
-const GCAL_CLIENT_SECRET = process.env.GCAL_CLIENT_SECRET!;
-const GCAL_REFRESH_TOKEN = process.env.GCAL_REFRESH_TOKEN!;
-
 let cachedAccessToken: string | null = null;
 let tokenExpiry: number = 0;
+// Track which refresh token the cached access token was obtained with so we
+// invalidate the cache when the token changes (e.g. after OAuth connect).
+let cachedForRefreshToken: string | null = null;
 
 async function getAccessToken(): Promise<string> {
+  const refreshToken = getRefreshToken();
+  if (!refreshToken) throw new Error("No GCal refresh token available");
+
+  const clientId = process.env.GCAL_CLIENT_ID;
+  const clientSecret = process.env.GCAL_CLIENT_SECRET;
+  if (!clientId || !clientSecret) {
+    throw new Error("GCAL_CLIENT_ID or GCAL_CLIENT_SECRET is not set");
+  }
+
   const now = Date.now();
-  if (cachedAccessToken && now < tokenExpiry - 60000) {
+  if (
+    cachedAccessToken &&
+    cachedForRefreshToken === refreshToken &&
+    now < tokenExpiry - 60000
+  ) {
     return cachedAccessToken;
   }
 
@@ -27,9 +45,9 @@ async function getAccessToken(): Promise<string> {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: new URLSearchParams({
-      client_id: GCAL_CLIENT_ID,
-      client_secret: GCAL_CLIENT_SECRET,
-      refresh_token: GCAL_REFRESH_TOKEN,
+      client_id: clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
       grant_type: "refresh_token",
     }),
   });
@@ -41,6 +59,7 @@ async function getAccessToken(): Promise<string> {
 
   const data = await resp.json() as { access_token: string; expires_in: number };
   cachedAccessToken = data.access_token;
+  cachedForRefreshToken = refreshToken;
   tokenExpiry = now + data.expires_in * 1000;
   return cachedAccessToken;
 }
@@ -107,7 +126,7 @@ export async function syncActivityToCalendar(activity: {
 }
 
 export function gcalConfigured(): boolean {
-  return !!(GCAL_CLIENT_ID && GCAL_CLIENT_SECRET && GCAL_REFRESH_TOKEN);
+  return !!(process.env.GCAL_CLIENT_ID && process.env.GCAL_CLIENT_SECRET && gcalTokenAvailable());
 }
 
 /**

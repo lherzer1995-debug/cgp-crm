@@ -4,7 +4,12 @@ import type { Request } from 'express';
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
-import { syncAllActivitiesToCalendar, gcalConfigured } from "./gcalDirect";
+import { syncAllActivitiesToCalendar } from "./gcalDirect";
+import { loadTokenFromDisk } from "./oauth";
+
+// Load persisted OAuth token before anything else so gcalConfigured() is
+// accurate when routes are registered and the sync interval is set up.
+loadTokenFromDisk();
 
 const app = express();
 const httpServer = createServer(app);
@@ -102,21 +107,22 @@ app.use((req, res, next) => {
       // Runs every 4 minutes and syncs any activity that has a dueDate but
       // no calendarEventId yet.  Fires once immediately on startup so that
       // activities created while the server was offline are caught quickly.
-      if (gcalConfigured()) {
-        const SYNC_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
+      // The interval always runs; syncAllActivitiesToCalendar() is a no-op
+      // when no token is available, so connecting via OAuth mid-session will
+      // automatically start syncing on the next tick.
+      const SYNC_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
 
-        const runSync = () => {
-          syncAllActivitiesToCalendar().catch((err) => {
-            console.error("[GCal] Unexpected error in background sync:", err);
-          });
-        };
+      const runSync = () => {
+        syncAllActivitiesToCalendar().catch((err) => {
+          console.error("[GCal] Unexpected error in background sync:", err);
+        });
+      };
 
-        // Initial run shortly after boot so we don't wait a full interval
-        setTimeout(runSync, 10_000);
-        setInterval(runSync, SYNC_INTERVAL_MS);
+      // Initial run shortly after boot so we don't wait a full interval
+      setTimeout(runSync, 10_000);
+      setInterval(runSync, SYNC_INTERVAL_MS);
 
-        log(`Google Calendar background sync scheduled every ${SYNC_INTERVAL_MS / 1000}s`, "gcal");
-      }
+      log(`Google Calendar background sync scheduled every ${SYNC_INTERVAL_MS / 1000}s`, "gcal");
     },
   );
 })();
