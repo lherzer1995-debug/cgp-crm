@@ -20,6 +20,7 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
   return pages.join("\n");
 }
 import { syncActivityToCalendar, gcalConfigured } from "./gcalDirect";
+import { registerOAuthRoutes, getStoredToken } from "./oauth";
 import { parseGermanDateTime } from "./dateParser";
 
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {
@@ -226,6 +227,9 @@ function analyzeContractWithAI(text: string): Promise<Record<string, any>> {
 
 export function registerRoutes(httpServer: Server, app: Express) {
 
+  // ── Google OAuth ───────────────────────────────────────────────────────────
+  registerOAuthRoutes(app);
+
   // ── Customers ─────────────────────────────────────────────────────────────
   app.get("/api/customers", (_req, res) => {
     res.json(storage.getCustomers());
@@ -365,8 +369,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   // ── Settings ──────────────────────────────────────────────────────────────
   app.get("/api/settings", (_req, res) => {
+    const token = getStoredToken();
     res.json({
       gcalConfigured: gcalConfigured(),
+      gcalConnected: gcalConfigured(),
+      gcalEmail: token?.email ?? null,
     });
   });
 
