@@ -5,7 +5,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
 import { syncAllActivitiesToCalendar } from "./gcalDirect";
-import { loadTokenFromDisk } from "./oauth";
+import { loadTokenFromDisk, requireGCalConnected } from "./oauth";
 
 // Load persisted OAuth token before anything else so gcalConfigured() is
 // accurate when routes are registered and the sync interval is set up.
@@ -29,6 +29,11 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+// ── GCal Guard ────────────────────────────────────────────────────────────────
+// All /api routes except /api/oauth/google/* return 401 until the user has
+// connected Google Calendar. The frontend shows a setup screen in that case.
+app.use("/api", requireGCalConnected);
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
