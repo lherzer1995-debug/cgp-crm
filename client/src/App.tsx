@@ -79,7 +79,7 @@ function GCalSetupScreen() {
           {/* Steps */}
           <ol className="space-y-2.5 text-sm text-muted-foreground">
             {[
-              "Klicke auf „Jetzt verbinden"",
+              `Klicke auf „Jetzt verbinden"`,
               "Melde dich mit deinem Google-Konto an",
               "Erteile die Kalender-Berechtigung",
               "Du wirst automatisch ins CRM weitergeleitet",
