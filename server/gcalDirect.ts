@@ -109,3 +109,45 @@ export async function syncActivityToCalendar(activity: {
 export function gcalConfigured(): boolean {
   return !!(GCAL_CLIENT_ID && GCAL_CLIENT_SECRET && GCAL_REFRESH_TOKEN);
 }
+
+/**
+ * Periodic background sync: finds every activity that has a dueDate but no
+ * calendarEventId yet and pushes it to Google Calendar.  Errors are logged
+ * but never re-thrown so the interval never crashes the process.
+ */
+export async function syncAllActivitiesToCalendar(): Promise<void> {
+  if (!gcalConfigured()) return;
+
+  // Lazy-import storage here to avoid a circular-dependency at module load time
+  const { storage } = await import("./storage");
+
+  const allActivities = storage.getAllActivities();
+  const pending = allActivities.filter((a) => a.dueDate && !a.calendarEventId);
+
+  if (pending.length === 0) return;
+
+  console.log(`[GCal] Background sync: ${pending.length} unsynced activit${pending.length === 1 ? "y" : "ies"} found`);
+
+  for (const activity of pending) {
+    try {
+      const customer = storage.getCustomer(activity.customerId);
+      const companyName = customer?.companyName ?? "Kunde";
+
+      const eventId = await syncActivityToCalendar(
+        {
+          id: activity.id,
+          type: activity.type,
+          description: activity.description,
+          dueDate: activity.dueDate!,
+          dueTime: activity.dueTime,
+        },
+        companyName
+      );
+
+      storage.updateActivity(activity.id, { calendarEventId: eventId });
+      console.log(`[GCal] Background sync: event created for activity ${activity.id} → ${eventId}`);
+    } catch (err: any) {
+      console.error(`[GCal] Background sync: failed for activity ${activity.id}:`, err.message);
+    }
+  }
+}

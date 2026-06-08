@@ -4,6 +4,7 @@ import type { Request } from 'express';
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "node:http";
+import { syncAllActivitiesToCalendar, gcalConfigured } from "./gcalDirect";
 
 const app = express();
 const httpServer = createServer(app);
@@ -96,6 +97,26 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+
+      // ── Periodic Google Calendar background sync ──────────────────────────
+      // Runs every 4 minutes and syncs any activity that has a dueDate but
+      // no calendarEventId yet.  Fires once immediately on startup so that
+      // activities created while the server was offline are caught quickly.
+      if (gcalConfigured()) {
+        const SYNC_INTERVAL_MS = 4 * 60 * 1000; // 4 minutes
+
+        const runSync = () => {
+          syncAllActivitiesToCalendar().catch((err) => {
+            console.error("[GCal] Unexpected error in background sync:", err);
+          });
+        };
+
+        // Initial run shortly after boot so we don't wait a full interval
+        setTimeout(runSync, 10_000);
+        setInterval(runSync, SYNC_INTERVAL_MS);
+
+        log(`Google Calendar background sync scheduled every ${SYNC_INTERVAL_MS / 1000}s`, "gcal");
+      }
     },
   );
 })();
