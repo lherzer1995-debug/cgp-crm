@@ -8,7 +8,7 @@ import { syncAllActivitiesToCalendar } from "./gcalDirect";
 import { loadTokenFromDisk, requireGCalConnected } from "./oauth";
 
 // Load persisted OAuth token before anything else so gcalConfigured() is
-// accurate when routes are registered and the sync interval is set up.
+// Accurate when routes are registered and the sync interval is set up.
 loadTokenFromDisk();
 
 const app = express();
