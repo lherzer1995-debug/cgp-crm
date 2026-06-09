@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage, db } from "./storage";
-import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema, updateSettingsSchema, insertCommissionSchema } from "@shared/schema";
+import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema, updateSettingsSchema, insertCommissionSchema, insertActivityTemplateSchema } from "@shared/schema";
 import { customers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import multer from "multer";
@@ -486,6 +486,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
     const appSettings = storage.getSettings();
     res.json({
       crmName: appSettings.crmName,
+      advisorName: appSettings.advisorName ?? "Lars Herzer",
+      monthlyCommissionQuota: appSettings.monthlyCommissionQuota ?? null,
       gcalConfigured: gcalConfigured(),
       gcalConnected: gcalConfigured(),
       gcalEmail: token?.email ?? null,
@@ -497,6 +499,42 @@ export function registerRoutes(httpServer: Server, app: Express) {
     if (!result.success) return res.status(400).json({ message: result.error.message });
     const updated = storage.updateSettings(result.data);
     res.json(updated);
+  });
+
+  // ── Activity Templates ────────────────────────────────────────────────────
+  app.get("/api/activity-templates", (_req, res) => {
+    res.json(storage.getActivityTemplates());
+  });
+
+  app.post("/api/activity-templates", (req, res) => {
+    const result = insertActivityTemplateSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ message: result.error.message });
+    res.status(201).json(storage.createActivityTemplate(result.data));
+  });
+
+  app.delete("/api/activity-templates/:id", (req, res) => {
+    storage.deleteActivityTemplate(Number(req.params.id));
+    res.status(204).end();
+  });
+
+  app.post("/api/activity-templates/:id/create-instance", (req, res) => {
+    const template = storage.getActivityTemplate(Number(req.params.id));
+    if (!template) return res.status(404).json({ message: "Template nicht gefunden" });
+    const { customerId, dueDate, dueTime } = req.body;
+    if (!customerId) return res.status(400).json({ message: "customerId erforderlich" });
+    const activity = storage.createActivity({
+      customerId: Number(customerId),
+      type: template.type,
+      description: template.description,
+      priority: template.priority,
+      dueDate: dueDate ?? null,
+      dueTime: dueTime ?? null,
+      rawDateText: null,
+      calendarEventId: null,
+      done: false,
+      completedAt: null,
+    });
+    res.status(201).json(activity);
   });
 
   // ── Commissions ───────────────────────────────────────────────────────────
@@ -520,6 +558,35 @@ export function registerRoutes(httpServer: Server, app: Express) {
     const summary = storage.getCommissionSummary(year);
     const totalYear = summary.reduce((s, m) => s + m.total, 0);
     res.json({ year, summary, totalYear });
+  });
+
+  // ── Commissions CSV Export (before /:id to avoid route conflict) ─────────
+  app.get("/api/commissions/export", (req, res) => {
+    const year = req.query.year ? Number(req.query.year) : undefined;
+    const list = storage.getCommissions({ year });
+    const allCustomers = storage.getCustomers();
+    const customerMap = new Map(allCustomers.map((c) => [c.id, c]));
+
+    const headers = ["id", "datum", "kunde", "typ", "beschreibung", "betrag_eur"];
+    const COMMISSION_TYPES: Record<string, string> = {
+      sale: "Abschluss", renewal: "Verlängerung", upsell: "Upsell", other: "Sonstiges",
+    };
+    const rows = list.map((c) => [
+      String(c.id),
+      c.date,
+      csvEscape(customerMap.get(c.customerId)?.companyName ?? "Unbekannt"),
+      csvEscape(COMMISSION_TYPES[c.type] ?? c.type),
+      csvEscape(c.description ?? ""),
+      String(c.amount.toFixed(2)).replace(".", ","),
+    ].join(";"));
+
+    const csv = [headers.join(";"), ...rows].join("\n");
+    const filename = year
+      ? `provisionen-${year}-${new Date().toISOString().slice(0, 10)}.csv`
+      : `provisionen-${new Date().toISOString().slice(0, 10)}.csv`;
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.send("\uFEFF" + csv); // BOM for Excel
   });
 
   app.get("/api/customers/:id/commissions", (req, res) => {
@@ -723,6 +790,25 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.setHeader("Content-Type", "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="kunden-export-${new Date().toISOString().slice(0, 10)}.csv"`);
     res.send("\uFEFF" + csv); // BOM for Excel
+  });
+
+  // ── Import Preview ────────────────────────────────────────────────────────
+  app.post("/api/import/csv/preview", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Keine Datei hochgeladen" });
+      const text = req.file.buffer.toString("utf-8").replace(/^\uFEFF/, "");
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) return res.status(400).json({ message: "CSV leer oder nur Header" });
+
+      const headers = lines[0].split(",").map((h) => h.trim().replace(/"/g, ""));
+      const previewRows: string[][] = [];
+      for (let i = 1; i <= Math.min(5, lines.length - 1); i++) {
+        previewRows.push(parseCSVLine(lines[i]));
+      }
+      res.json({ headers, previewRows, totalRows: lines.length - 1 });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   app.post("/api/import/csv", upload.single("file"), async (req, res) => {

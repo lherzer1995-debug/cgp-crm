@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -6,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { CheckSquare, Square, Calendar, ExternalLink, Activity, CalendarCheck } from "lucide-react";
 import { cn } from "@/lib/utils";
+import CalendarWidget from "@/components/CalendarWidget";
 import type { Activity as ActivityType, Customer } from "@shared/schema";
 
 const ACT_TYPES: Record<string, string> = {
@@ -38,6 +40,7 @@ const GROUP_CONFIG = {
 };
 
 export default function ActivitiesPage() {
+  const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const { data: activities = [], isLoading: aLoad } = useQuery<ActivityType[]>({ queryKey: ["/api/activities"] });
   const { data: customers = [] } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
   const custMap = Object.fromEntries(customers.map((c) => [c.id, c]));
@@ -48,7 +51,7 @@ export default function ActivitiesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/activities"] }),
   });
 
-  const pending = activities
+  const allPending = activities
     .filter((a) => !a.done)
     .sort((a, b) => {
       if (!a.dueDate && !b.dueDate) return 0;
@@ -57,9 +60,13 @@ export default function ActivitiesPage() {
       return a.dueDate > b.dueDate ? 1 : -1;
     });
 
-  const done = activities.filter((a) => a.done).sort((a, b) =>
-    (b.createdAt ?? "") > (a.createdAt ?? "") ? 1 : -1
-  );
+  const pending = selectedDate
+    ? allPending.filter((a) => a.dueDate?.slice(0, 10) === selectedDate)
+    : allPending;
+
+  const done = activities
+    .filter((a) => a.done && (!selectedDate || a.dueDate?.slice(0, 10) === selectedDate))
+    .sort((a, b) => ((b.createdAt ?? "") > (a.createdAt ?? "") ? 1 : -1));
 
   // Gruppieren
   const groups: Record<string, ActivityType[]> = { overdue: [], today: [], week: [], later: [], none: [] };
@@ -154,11 +161,21 @@ export default function ActivitiesPage() {
       <div className="flex items-start gap-3">
         <div className="w-1 h-10 rounded-full bg-[#FFD100] shrink-0 mt-0.5" />
         <div>
-          <h1 className="text-xl font-bold text-foreground">Aufgaben</h1>
+          <h1 className="text-xl font-bold text-foreground">Aktivitäten</h1>
           <p className="text-sm text-muted-foreground">
-            {pending.length > 0 ? `${pending.length} offen` : "Alles erledigt"}{done.length > 0 ? ` · ${done.length} erledigt` : ""}
+            {allPending.length > 0 ? `${allPending.length} offen` : "Alles erledigt"}{done.length > 0 ? ` · ${done.length} erledigt` : ""}
+            {selectedDate ? ` · Gefiltert: ${new Date(selectedDate + "T00:00:00").toLocaleDateString("de-DE", { day: "2-digit", month: "short" })}` : ""}
           </p>
         </div>
+      </div>
+
+      {/* Calendar Widget */}
+      <div className="max-w-xs">
+        <CalendarWidget
+          activities={activities}
+          selectedDate={selectedDate}
+          onSelectDate={setSelectedDate}
+        />
       </div>
 
       {aLoad ? (
