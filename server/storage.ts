@@ -139,6 +139,10 @@ runMigration("ALTER TABLE settings ADD COLUMN monthly_commission_quota REAL");
 runMigration("ALTER TABLE customers ADD COLUMN contract_product TEXT");
 runMigration("ALTER TABLE customers ADD COLUMN default_disagio REAL");
 runMigration("ALTER TABLE customers ADD COLUMN default_volume REAL");
+// Extended contract & terminal fields
+runMigration("ALTER TABLE customers ADD COLUMN contract_term_months INTEGER");
+runMigration("ALTER TABLE customers ADD COLUMN cancellation_notice_days INTEGER");
+runMigration("ALTER TABLE customers ADD COLUMN terminals TEXT");
 
 export interface IStorage {
   // Customers

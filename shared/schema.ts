@@ -34,6 +34,9 @@ export const customers = sqliteTable("customers", {
   contractStart: text("contract_start"),
   contractEnd: text("contract_end"),
   contractProduct: text("contract_product"),
+  contractTermMonths: integer("contract_term_months"),       // Laufzeit in Monaten, z.B. 24
+  cancellationNoticeDays: integer("cancellation_notice_days"), // Kündigungsfrist in Tagen, z.B. 30
+  terminals: text("terminals"),                               // JSON: [{type,count,status}]
   // Provisions-Vorschläge (Standard-Werte für CommissionDialog)
   defaultDisagio: real("default_disagio"),
   defaultVolume: real("default_volume"),
