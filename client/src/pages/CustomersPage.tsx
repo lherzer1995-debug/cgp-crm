@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { queryClient, apiRequest, API_BASE } from "@/lib/queryClient";
@@ -18,11 +18,26 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Pencil, Trash2, ExternalLink, Euro, Users, Building2, Upload, FileText, Loader2, CheckCircle2, AlertCircle, Route, ShieldAlert } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, ExternalLink, Euro, Users, Building2, Upload, FileText, Loader2, CheckCircle2, AlertCircle, Route, ShieldAlert, X, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Customer, InsertCustomer } from "@shared/schema";
 import { getRiskBadgeClass, getRiskInfo } from "@/lib/riskScoring";
 import { RouteOptimizationDialog } from "@/components/RouteOptimizationDialog";
+
+type ContractEndFilter = "all" | "overdue" | "this_month" | "next_3_months";
+type SortField = "default" | "risk" | "company" | "city" | "volume" | "contractEnd";
+type SortDir = "asc" | "desc";
+
+const FILTER_STORAGE_KEY = "crm_customers_filters_v1";
+
+interface StoredFilters {
+  riskFilter: "all" | "risk";
+  industryFilter: string;
+  cityFilter: string;
+  contractEndFilter: ContractEndFilter;
+  sortBy: SortField;
+  sortDir: SortDir;
+}
 
 const INDUSTRIES = [
   "Einzelhandel", "Gastronomie", "E-Commerce", "Dienstleistung",
@@ -484,6 +499,21 @@ function CustomerForm({
   );
 }
 
+function loadStoredFilters(): StoredFilters {
+  try {
+    const raw = localStorage.getItem(FILTER_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as StoredFilters;
+  } catch {}
+  return {
+    riskFilter: "all",
+    industryFilter: "all",
+    cityFilter: "all",
+    contractEndFilter: "all",
+    sortBy: "default",
+    sortDir: "asc",
+  };
+}
+
 export default function CustomersPage() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -491,8 +521,36 @@ export default function CustomersPage() {
   const [editing, setEditing] = useState<Customer | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [routeDialogOpen, setRouteDialogOpen] = useState(false);
-  const [riskFilter, setRiskFilter] = useState<"all" | "risk">("all");
-  const [sortBy, setSortBy] = useState<"default" | "risk">("default");
+
+  // Persistent filters
+  const [filters, setFilters] = useState<StoredFilters>(loadStoredFilters);
+
+  const updateFilter = <K extends keyof StoredFilters>(key: K, value: StoredFilters[K]) => {
+    setFilters((prev) => {
+      const next = { ...prev, [key]: value };
+      try { localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const hasActiveFilters =
+    filters.riskFilter !== "all" ||
+    filters.industryFilter !== "all" ||
+    filters.cityFilter !== "all" ||
+    filters.contractEndFilter !== "all";
+
+  const clearFilters = () => {
+    const reset: StoredFilters = {
+      riskFilter: "all",
+      industryFilter: "all",
+      cityFilter: "all",
+      contractEndFilter: "all",
+      sortBy: "default",
+      sortDir: "asc",
+    };
+    setFilters(reset);
+    try { localStorage.setItem(FILTER_STORAGE_KEY, JSON.stringify(reset)); } catch {}
+  };
 
   const { data: customers = [], isLoading } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
@@ -529,24 +587,72 @@ export default function CustomersPage() {
     },
   });
 
+  // Derive unique cities and industries for filter dropdowns
+  const uniqueCities = Array.from(new Set(customers.map((c) => c.city).filter(Boolean) as string[])).sort();
+  const uniqueIndustries = Array.from(new Set(customers.map((c) => c.industry).filter(Boolean) as string[])).sort();
+
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+  const in3Months = new Date(today); in3Months.setMonth(in3Months.getMonth() + 3);
+
   let filtered = customers.filter((c) => {
     const q = search.toLowerCase();
-    const matchesSearch = (
+    const matchesSearch = !q || (
       c.companyName.toLowerCase().includes(q) ||
       c.contactName.toLowerCase().includes(q) ||
       (c.city ?? "").toLowerCase().includes(q) ||
       (c.email ?? "").toLowerCase().includes(q)
     );
     if (!matchesSearch) return false;
-    if (riskFilter === "risk") {
-      return (c.riskScore ?? 0) >= 31;
+
+    if (filters.riskFilter === "risk" && (c.riskScore ?? 0) < 31) return false;
+    if (filters.industryFilter !== "all" && c.industry !== filters.industryFilter) return false;
+    if (filters.cityFilter !== "all" && c.city !== filters.cityFilter) return false;
+
+    if (filters.contractEndFilter !== "all" && c.contractEnd) {
+      const end = new Date(c.contractEnd); end.setHours(0, 0, 0, 0);
+      if (filters.contractEndFilter === "overdue" && end >= today) return false;
+      if (filters.contractEndFilter === "this_month" && (end < today || end > endOfMonth)) return false;
+      if (filters.contractEndFilter === "next_3_months" && (end < today || end > in3Months)) return false;
+    } else if (filters.contractEndFilter !== "all" && !c.contractEnd) {
+      return false;
     }
+
     return true;
   });
 
-  if (sortBy === "risk") {
-    filtered = [...filtered].sort((a, b) => (b.riskScore ?? 0) - (a.riskScore ?? 0));
-  }
+  // Sorting
+  const toggleSort = (field: SortField) => {
+    if (filters.sortBy === field) {
+      updateFilter("sortDir", filters.sortDir === "asc" ? "desc" : "asc");
+    } else {
+      updateFilter("sortBy", field);
+      updateFilter("sortDir", field === "risk" ? "desc" : "asc");
+    }
+  };
+
+  const SortIcon = ({ field }: { field: SortField }) => {
+    if (filters.sortBy !== field) return <ArrowUpDown className="w-3 h-3 opacity-40" />;
+    return filters.sortDir === "asc"
+      ? <ArrowUp className="w-3 h-3 text-primary" />
+      : <ArrowDown className="w-3 h-3 text-primary" />;
+  };
+
+  filtered = [...filtered].sort((a, b) => {
+    const dir = filters.sortDir === "asc" ? 1 : -1;
+    switch (filters.sortBy) {
+      case "risk": return ((b.riskScore ?? 0) - (a.riskScore ?? 0)) * dir;
+      case "company": return a.companyName.localeCompare(b.companyName, "de") * dir;
+      case "city": return (a.city ?? "").localeCompare(b.city ?? "", "de") * dir;
+      case "volume": return ((a.paymentVolume ?? 0) - (b.paymentVolume ?? 0)) * dir;
+      case "contractEnd": {
+        const ae = a.contractEnd ?? "9999";
+        const be = b.contractEnd ?? "9999";
+        return ae.localeCompare(be) * dir;
+      }
+      default: return 0;
+    }
+  });
 
   const handleSave = (data: Partial<InsertCustomer>) => {
     if (!data.companyName?.trim() || !data.contactName?.trim()) {
@@ -588,42 +694,96 @@ export default function CustomersPage() {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col sm:flex-row gap-2.5">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input
-            className="pl-9"
-            placeholder="Firma, Kontakt, Stadt oder E-Mail suchen…"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            data-testid="input-search"
-          />
+      <div className="space-y-2">
+        <div className="flex flex-col sm:flex-row gap-2.5">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              className="pl-9"
+              placeholder="Firma, Kontakt, Stadt oder E-Mail suchen…"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              data-testid="input-search"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {/* Risk filter */}
+            <Select value={filters.riskFilter} onValueChange={(v) => updateFilter("riskFilter", v as "all" | "risk")}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle Kunden</SelectItem>
+                <SelectItem value="risk">
+                  <span className="flex items-center gap-1.5">
+                    <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+                    Nur Risiko-Kunden
+                  </span>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Industry filter */}
+            <Select value={filters.industryFilter} onValueChange={(v) => updateFilter("industryFilter", v)}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Branche" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle Branchen</SelectItem>
+                {uniqueIndustries.map((ind) => (
+                  <SelectItem key={ind} value={ind}>{ind}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* City filter */}
+            <Select value={filters.cityFilter} onValueChange={(v) => updateFilter("cityFilter", v)}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Stadt" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle Städte</SelectItem>
+                {uniqueCities.map((city) => (
+                  <SelectItem key={city} value={city}>{city}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            {/* Contract end filter */}
+            <Select value={filters.contractEndFilter} onValueChange={(v) => updateFilter("contractEndFilter", v as ContractEndFilter)}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="Vertragsende" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Alle Verträge</SelectItem>
+                <SelectItem value="overdue">Überfällig</SelectItem>
+                <SelectItem value="this_month">Diesen Monat</SelectItem>
+                <SelectItem value="next_3_months">Nächste 3 Monate</SelectItem>
+              </SelectContent>
+            </Select>
+
+            {/* Clear filters */}
+            {hasActiveFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="h-10 gap-1.5 text-muted-foreground hover:text-foreground"
+              >
+                <X className="w-3.5 h-3.5" />
+                Filter zurücksetzen
+              </Button>
+            )}
+          </div>
         </div>
-        <div className="flex gap-2">
-          <Select value={riskFilter} onValueChange={(v) => setRiskFilter(v as "all" | "risk")}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Alle Kunden</SelectItem>
-              <SelectItem value="risk">
-                <span className="flex items-center gap-1.5">
-                  <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
-                  Nur Risiko-Kunden
-                </span>
-              </SelectItem>
-            </SelectContent>
-          </Select>
-          <Select value={sortBy} onValueChange={(v) => setSortBy(v as "default" | "risk")}>
-            <SelectTrigger className="w-40">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="default">Standard</SelectItem>
-              <SelectItem value="risk">Nach Risk-Score</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+
+        {/* Active filter summary */}
+        {(hasActiveFilters || search) && (
+          <p className="text-xs text-muted-foreground">
+            {filtered.length} von {customers.length} Kunden
+            {hasActiveFilters && " · Filter aktiv"}
+          </p>
+        )}
       </div>
 
       {/* Table */}
@@ -644,20 +804,50 @@ export default function CustomersPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
-                    {["Firma", "Kontakt", "Stadt", "Volumen / Mon.", "Risiko", ""].map((h) => (
-                      <th
-                        key={h}
-                        className={cn(
-                          "text-left px-4 py-2.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wide",
-                          h === "Stadt" && "hidden lg:table-cell",
-                          h === "Volumen / Mon." && "hidden lg:table-cell",
-                          h === "Kontakt" && "hidden md:table-cell",
-                          h === "Risiko" && "hidden xl:table-cell",
-                        )}
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wide">
+                      <button
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                        onClick={() => toggleSort("company")}
                       >
-                        {h}
-                      </th>
-                    ))}
+                        Firma <SortIcon field="company" />
+                      </button>
+                    </th>
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wide hidden md:table-cell">
+                      Kontakt
+                    </th>
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wide hidden lg:table-cell">
+                      <button
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                        onClick={() => toggleSort("city")}
+                      >
+                        Stadt <SortIcon field="city" />
+                      </button>
+                    </th>
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wide hidden lg:table-cell">
+                      <button
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                        onClick={() => toggleSort("volume")}
+                      >
+                        Volumen / Mon. <SortIcon field="volume" />
+                      </button>
+                    </th>
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wide hidden xl:table-cell">
+                      <button
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                        onClick={() => toggleSort("risk")}
+                      >
+                        Risiko <SortIcon field="risk" />
+                      </button>
+                    </th>
+                    <th className="text-left px-4 py-2.5 text-[11px] font-bold text-muted-foreground uppercase tracking-wide hidden xl:table-cell">
+                      <button
+                        className="flex items-center gap-1 hover:text-foreground transition-colors"
+                        onClick={() => toggleSort("contractEnd")}
+                      >
+                        Vertragsende <SortIcon field="contractEnd" />
+                      </button>
+                    </th>
+                    <th className="px-4 py-2.5" />
                   </tr>
                 </thead>
                 <tbody>
@@ -707,6 +897,21 @@ export default function CustomersPage() {
                         ) : (
                           <span className="text-muted-foreground text-xs">—</span>
                         )}
+                      </td>
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        {c.contractEnd ? (() => {
+                          const end = new Date(c.contractEnd); end.setHours(0, 0, 0, 0);
+                          const isOverdue = end < today;
+                          const isSoon = !isOverdue && end <= in3Months;
+                          return (
+                            <span className={cn(
+                              "text-xs font-medium",
+                              isOverdue ? "text-destructive" : isSoon ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                            )}>
+                              {end.toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "2-digit" })}
+                            </span>
+                          );
+                        })() : <span className="text-muted-foreground text-xs">—</span>}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 justify-end">

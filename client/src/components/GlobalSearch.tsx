@@ -1,29 +1,42 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
-import { apiRequest } from "@/lib/queryClient";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import {
-  Search, Users, FileText, Calendar, ArrowRight,
+  Search, Users, Calendar, ArrowRight,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Customer, Note, Activity } from "@shared/schema";
+import type { Customer, Activity } from "@shared/schema";
 
 const ACT_TYPES: Record<string, string> = {
   call: "Anruf", follow_up: "Follow-up", meeting: "Meeting", email: "E-Mail",
 };
 
+// Filter categories for the search
+type FilterType = "all" | "customers" | "activities";
+
 interface SearchResult {
-  type: "customer" | "note" | "activity";
+  type: "customer" | "activity";
   id: number;
   customerId?: number;
   title: string;
   subtitle: string;
   href: string;
+  score: number; // relevance score for ranking
+}
+
+/** Simple fuzzy-ish scoring: exact match > starts-with > contains */
+function scoreMatch(text: string, q: string): number {
+  const t = text.toLowerCase();
+  if (t === q) return 100;
+  if (t.startsWith(q)) return 80;
+  if (t.includes(q)) return 60;
+  // Token-level: any word starts with query
+  if (t.split(/\s+/).some((w) => w.startsWith(q))) return 70;
+  return 0;
 }
 
 function highlight(text: string, query: string): React.ReactNode {
@@ -42,58 +55,87 @@ function highlight(text: string, query: string): React.ReactNode {
 export default function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [activeFilter, setActiveFilter] = useState<FilterType>("all");
   const inputRef = useRef<HTMLInputElement>(null);
   const [, navigate] = useLocation();
 
   const { data: customers = [] } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
   const { data: allActivities = [] } = useQuery<Activity[]>({ queryKey: ["/api/activities"] });
 
-  // We also need notes — fetch all customer notes in batch
-  // For now we search customers + activities; notes are per-customer so we include them via customer titles
   const q = query.trim().toLowerCase();
 
-  const results: SearchResult[] = [];
+  const results: SearchResult[] = useMemo(() => {
+    if (q.length < 1) return [];
+    const out: SearchResult[] = [];
 
-  if (q.length >= 1) {
-    // Customers
-    customers.forEach((c) => {
-      const matchStr = [c.companyName, c.contactName, c.email, c.phone, c.city].join(" ").toLowerCase();
-      if (matchStr.includes(q)) {
-        results.push({
-          type: "customer",
-          id: c.id,
-          title: c.companyName,
-          subtitle: [c.contactName, c.city].filter(Boolean).join(" · "),
-          href: `/customers/${c.id}`,
-        });
-      }
-    });
+    // Customers — search by company, contact, city, postal code (if stored in city), email, phone
+    if (activeFilter === "all" || activeFilter === "customers") {
+      customers.forEach((c) => {
+        const fields = [
+          { text: c.companyName, weight: 3 },
+          { text: c.contactName ?? "", weight: 2 },
+          { text: c.city ?? "", weight: 2 },
+          { text: c.email ?? "", weight: 1 },
+          { text: c.phone ?? "", weight: 1 },
+          { text: c.industry ?? "", weight: 1 },
+        ];
+        const bestScore = fields.reduce((max, f) => {
+          if (!f.text) return max;
+          const s = scoreMatch(f.text, q) * f.weight;
+          return s > max ? s : max;
+        }, 0);
+        if (bestScore > 0) {
+          out.push({
+            type: "customer",
+            id: c.id,
+            title: c.companyName,
+            subtitle: [c.contactName, c.city, c.industry].filter(Boolean).join(" · "),
+            href: `/customers/${c.id}`,
+            score: bestScore,
+          });
+        }
+      });
+    }
 
     // Activities
-    allActivities.forEach((a) => {
-      const matchStr = [a.description, ACT_TYPES[a.type]].join(" ").toLowerCase();
-      if (matchStr.includes(q)) {
-        const cust = customers.find((c) => c.id === a.customerId);
-        results.push({
-          type: "activity",
-          id: a.id,
-          customerId: a.customerId,
-          title: a.description ?? `${ACT_TYPES[a.type] ?? a.type}`,
-          subtitle: [
-            ACT_TYPES[a.type] ?? a.type,
-            cust?.companyName,
-            a.dueDate ? new Date(a.dueDate).toLocaleDateString("de-DE", { day: "2-digit", month: "short" }) : undefined,
-          ].filter(Boolean).join(" · "),
-          href: `/customers/${a.customerId}`,
-        });
-      }
-    });
-  }
+    if (activeFilter === "all" || activeFilter === "activities") {
+      allActivities.forEach((a) => {
+        const fields = [
+          { text: a.description ?? "", weight: 2 },
+          { text: ACT_TYPES[a.type] ?? a.type, weight: 1 },
+        ];
+        const bestScore = fields.reduce((max, f) => {
+          if (!f.text) return max;
+          const s = scoreMatch(f.text, q) * f.weight;
+          return s > max ? s : max;
+        }, 0);
+        if (bestScore > 0) {
+          const cust = customers.find((c) => c.id === a.customerId);
+          out.push({
+            type: "activity",
+            id: a.id,
+            customerId: a.customerId,
+            title: a.description ?? `${ACT_TYPES[a.type] ?? a.type}`,
+            subtitle: [
+              ACT_TYPES[a.type] ?? a.type,
+              cust?.companyName,
+              a.dueDate ? new Date(a.dueDate).toLocaleDateString("de-DE", { day: "2-digit", month: "short" }) : undefined,
+            ].filter(Boolean).join(" · "),
+            href: `/customers/${a.customerId}`,
+            score: bestScore,
+          });
+        }
+      });
+    }
 
-  // Clamp selectedIdx
+    // Sort by score descending, limit to 20
+    return out.sort((a, b) => b.score - a.score).slice(0, 20);
+  }, [q, activeFilter, customers, allActivities]);
+
+  // Clamp selectedIdx when query or filter changes
   useEffect(() => {
     setSelectedIdx(0);
-  }, [q]);
+  }, [q, activeFilter]);
 
   function navigate_to(href: string) {
     navigate(href);
@@ -120,20 +162,25 @@ export default function GlobalSearch({ open, onClose }: { open: boolean; onClose
       setTimeout(() => inputRef.current?.focus(), 50);
       setQuery("");
       setSelectedIdx(0);
+      setActiveFilter("all");
     }
   }, [open]);
 
   const typeIcon = {
     customer: <Users className="w-3.5 h-3.5" />,
-    note: <FileText className="w-3.5 h-3.5" />,
     activity: <Calendar className="w-3.5 h-3.5" />,
   };
   const typeColor = {
     customer: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-    note: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300",
     activity: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   };
-  const typeLabel = { customer: "Kunde", note: "Notiz", activity: "Aktivität" };
+  const typeLabel = { customer: "Kunde", activity: "Aktivität" };
+
+  const filterTabs: { key: FilterType; label: string; count?: number }[] = [
+    { key: "all", label: "Alle" },
+    { key: "customers", label: "Kunden", count: results.filter((r) => r.type === "customer").length },
+    { key: "activities", label: "Aktivitäten", count: results.filter((r) => r.type === "activity").length },
+  ];
 
   return (
     <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
@@ -150,7 +197,7 @@ export default function GlobalSearch({ open, onClose }: { open: boolean; onClose
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Kunden, Aktivitäten, Notizen suchen…"
+            placeholder="Firma, Kontakt, Stadt, Aktivität suchen…"
             className="border-0 shadow-none focus-visible:ring-0 p-0 text-sm h-auto placeholder:text-muted-foreground/60"
             data-testid="input-global-search"
           />
@@ -159,19 +206,48 @@ export default function GlobalSearch({ open, onClose }: { open: boolean; onClose
           </kbd>
         </div>
 
+        {/* Filter tabs — only show when there are results */}
+        {q.length > 0 && results.length > 0 && (
+          <div className="flex items-center gap-1 px-3 py-1.5 border-b border-border bg-muted/20">
+            {filterTabs.map((tab) => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveFilter(tab.key)}
+                className={cn(
+                  "flex items-center gap-1 px-2.5 py-1 rounded-md text-[11px] font-semibold transition-colors",
+                  activeFilter === tab.key
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                )}
+              >
+                {tab.label}
+                {tab.key !== "all" && tab.count != null && tab.count > 0 && (
+                  <span className={cn(
+                    "text-[9px] font-bold px-1 rounded-full",
+                    activeFilter === tab.key ? "bg-primary-foreground/20 text-primary-foreground" : "bg-muted-foreground/20"
+                  )}>
+                    {tab.count}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+        )}
+
         {/* Results */}
-        <div className="max-h-[380px] overflow-y-auto">
+        <div className="max-h-[360px] overflow-y-auto">
           {q.length === 0 && (
             <div className="px-4 py-8 text-center">
               <Search className="w-8 h-8 text-muted-foreground/30 mx-auto mb-2" />
               <p className="text-sm text-muted-foreground">Tippe um zu suchen</p>
-              <p className="text-xs text-muted-foreground/60 mt-1">Kunden · Aktivitäten</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Firma · Kontakt · Stadt · Aktivitäten</p>
             </div>
           )}
 
           {q.length > 0 && results.length === 0 && (
             <div className="px-4 py-8 text-center">
               <p className="text-sm text-muted-foreground">Keine Ergebnisse für „{query}"</p>
+              <p className="text-xs text-muted-foreground/60 mt-1">Versuche einen anderen Suchbegriff</p>
             </div>
           )}
 
@@ -230,7 +306,7 @@ export default function GlobalSearch({ open, onClose }: { open: boolean; onClose
             Öffnen
           </span>
           <span className="text-[10px] text-muted-foreground flex items-center gap-1 ml-auto">
-            <kbd className="border border-border rounded px-1 font-mono text-[9px] bg-background">/</kbd>
+            <kbd className="border border-border rounded px-1 font-mono text-[9px] bg-background">⌘K</kbd>
             Suche öffnen
           </span>
         </div>

@@ -3,12 +3,15 @@ import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
-  LayoutDashboard, Users, Activity, Menu, X, Sun, Moon, Settings, CalendarClock, Search,
+  Users, Activity, Menu, X, Sun, Moon, Settings, CalendarClock, Search,
   BarChart2, Database, ListChecks, TrendingUp, Bell, MapPin,
+  Phone, Euro, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Activity as ActivityType, Reminder } from "@shared/schema";
 import GlobalSearch from "./GlobalSearch";
+import ActivityDialog from "./ActivityDialog";
+import CommissionDialog from "./CommissionDialog";
 import { checkOverdueTasks } from "@/lib/notifications";
 import { API_BASE } from "@/lib/queryClient";
 
@@ -17,18 +20,26 @@ interface AppSettings {
   advisorName?: string;
 }
 
-const navItems = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/cockpit", label: "Tagescockpit", icon: Bell },
+// Primary nav: Cockpit first, then core workflow items
+const primaryNavItems = [
+  { href: "/", label: "Cockpit", icon: Bell },
   { href: "/customers", label: "Kunden", icon: Users },
   { href: "/map", label: "Karte", icon: MapPin },
   { href: "/tasks", label: "Aufgaben", icon: ListChecks },
+  { href: "/settings", label: "Einstellungen", icon: Settings },
+];
+
+// Secondary nav: less-frequent pages, collapsed by default on mobile
+const secondaryNavItems = [
   { href: "/activities", label: "Aktivitäten", icon: Activity },
   { href: "/commissions", label: "Provisionen", icon: TrendingUp },
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
+  { href: "/dashboard", label: "Dashboard", icon: BarChart2 },
   { href: "/data-management", label: "Daten", icon: Database },
-  { href: "/settings", label: "Einstellungen", icon: Settings },
 ];
+
+// All nav items combined (for active-label lookup in topbar)
+const allNavItems = [...primaryNavItems, ...secondaryNavItems];
 
 function CommerzLogo() {
   return (
@@ -44,6 +55,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [secondaryExpanded, setSecondaryExpanded] = useState(false);
+  const [quickActivityOpen, setQuickActivityOpen] = useState(false);
+  const [quickCommissionOpen, setQuickCommissionOpen] = useState(false);
   const [dark, setDark] = useState(() => {
     if (typeof window !== "undefined") {
       return window.matchMedia("(prefers-color-scheme: dark)").matches;
@@ -55,13 +69,19 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     document.documentElement.classList.toggle("dark", dark);
   }, [dark]);
 
-  // Global "/" shortcut to open search
+  // Global "/" and Cmd+K / Ctrl+K shortcut to open search
   useEffect(() => {
     function onKeyDown(e: KeyboardEvent) {
-      // Don't trigger when typing in inputs/textareas
       const tag = (e.target as HTMLElement)?.tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") return;
-      if (e.key === "/") {
+      const isInput = tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+      // Cmd+K / Ctrl+K — always works
+      if ((e.metaKey || e.ctrlKey) && e.key === "k") {
+        e.preventDefault();
+        setSearchOpen(true);
+        return;
+      }
+      // "/" — only when not in an input
+      if (!isInput && e.key === "/") {
         e.preventDefault();
         setSearchOpen(true);
       }
@@ -151,17 +171,48 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           >
             <Search className="w-3.5 h-3.5 shrink-0" />
             <span className="flex-1 text-left text-[12px]">Suchen…</span>
-            <kbd className="text-[9px] font-mono border border-border rounded px-1 bg-background">/</kbd>
+            <kbd className="text-[9px] font-mono border border-border rounded px-1 bg-background">⌘K</kbd>
           </button>
         </div>
 
-        {/* Nav */}
-        <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto" role="navigation">
-          {navItems.map(({ href, label, icon: Icon }) => {
+        {/* Quick Actions */}
+        <div className="px-3 pb-1">
+          <p className="text-[9px] font-bold uppercase tracking-widest text-muted-foreground/60 px-1 mb-1.5">Schnellaktionen</p>
+          <div className="grid grid-cols-3 gap-1.5">
+            <button
+              onClick={() => { setQuickActivityOpen(true); setSidebarOpen(false); }}
+              className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-muted/60 hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors text-center"
+              title="Neue Aktivität"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span className="text-[9px] font-semibold leading-tight">Aktivität</span>
+            </button>
+            <button
+              onClick={() => { setQuickCommissionOpen(true); setSidebarOpen(false); }}
+              className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-muted/60 hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors text-center"
+              title="Neue Provision"
+            >
+              <Euro className="w-3.5 h-3.5" />
+              <span className="text-[9px] font-semibold leading-tight">Provision</span>
+            </button>
+            <button
+              onClick={() => { setSearchOpen(true); setSidebarOpen(false); }}
+              className="flex flex-col items-center gap-1 px-2 py-2 rounded-lg bg-muted/60 hover:bg-primary/10 hover:text-primary text-muted-foreground transition-colors text-center"
+              title="Suche"
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span className="text-[9px] font-semibold leading-tight">Suche</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Primary Nav */}
+        <nav className="flex-1 px-3 py-2 space-y-0.5 overflow-y-auto" role="navigation">
+          {primaryNavItems.map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? location === "/" : location.startsWith(href);
             const badge =
               href === "/tasks" && overdueCount > 0 ? overdueCount :
-              href === "/cockpit" && overdueReminders.length > 0 ? overdueReminders.length :
+              href === "/" && overdueReminders.length > 0 ? overdueReminders.length :
               null;
             return (
               <Link key={href} href={href}>
@@ -186,6 +237,40 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               </Link>
             );
           })}
+
+          {/* Secondary Nav toggle */}
+          <button
+            onClick={() => setSecondaryExpanded((v) => !v)}
+            className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-xs font-semibold text-muted-foreground/70 hover:text-muted-foreground hover:bg-secondary/60 transition-colors mt-1"
+          >
+            <span className="flex-1 text-left uppercase tracking-widest text-[9px]">Weitere</span>
+            {secondaryExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+          </button>
+
+          {secondaryExpanded && (
+            <div className="space-y-0.5">
+              {secondaryNavItems.map(({ href, label, icon: Icon }) => {
+                const active = location.startsWith(href);
+                return (
+                  <Link key={href} href={href}>
+                    <a
+                      data-testid={`nav-${label.toLowerCase()}`}
+                      onClick={() => setSidebarOpen(false)}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-150",
+                        active
+                          ? "bg-primary text-primary-foreground shadow-sm"
+                          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                      )}
+                    >
+                      <Icon className="w-4 h-4 shrink-0" />
+                      <span className="flex-1">{label}</span>
+                    </a>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
         </nav>
 
         {/* Nächste Aufgabe */}
@@ -247,12 +332,36 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           <div className="flex items-center gap-2 flex-1">
             <div className="w-1 h-4 rounded-full bg-[#FFD100] hidden md:block" />
             <span className="text-xs text-muted-foreground font-semibold hidden md:block">
-              {navItems.find((n) => (n.href === "/" ? location === "/" : location.startsWith(n.href)))?.label ?? "CRM"}
+              {allNavItems.find((n) => (n.href === "/" ? location === "/" : location.startsWith(n.href)))?.label ?? "CRM"}
             </span>
             {/* Mobile logo */}
             <span className="md:hidden text-sm font-bold text-foreground">
               {crmName}
             </span>
+          </div>
+
+          {/* Quick action buttons in topbar */}
+          <div className="hidden sm:flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setQuickActivityOpen(true)}
+              className="h-8 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              title="Neue Aktivität"
+            >
+              <Phone className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">Aktivität</span>
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setQuickCommissionOpen(true)}
+              className="h-8 px-2 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+              title="Neue Provision"
+            >
+              <Euro className="w-3.5 h-3.5" />
+              <span className="hidden lg:inline">Provision</span>
+            </Button>
           </div>
 
           {/* Search button in topbar */}
@@ -262,7 +371,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             onClick={() => setSearchOpen(true)}
             className="h-8 w-8"
             data-testid="button-topbar-search"
-            aria-label="Suche öffnen"
+            aria-label="Suche öffnen (⌘K)"
           >
             <Search className="w-4 h-4" />
           </Button>
@@ -284,6 +393,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           {children}
         </main>
       </div>
+
+      {/* Global Quick Action Dialogs */}
+      <ActivityDialog
+        open={quickActivityOpen}
+        onClose={() => setQuickActivityOpen(false)}
+      />
+      <CommissionDialog
+        open={quickCommissionOpen}
+        onClose={() => setQuickCommissionOpen(false)}
+      />
     </div>
   );
 }

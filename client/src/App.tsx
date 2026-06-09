@@ -164,8 +164,10 @@ function CRMApp() {
     <Router hook={useHashLocation}>
       <Layout>
         <Switch>
-          <Route path="/" component={DashboardPage} />
-          <Route path="/cockpit" component={CockpitPage} />
+          {/* Cockpit is the primary landing page */}
+          <Route path="/" component={CockpitPage} />
+          {/* Dashboard still accessible at /dashboard */}
+          <Route path="/dashboard" component={DashboardPage} />
           <Route path="/customers" component={CustomersPage} />
           <Route path="/customers/:id" component={CustomerDetailPage} />
           <Route path="/map" component={MapPage} />
