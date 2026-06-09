@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema, updateSettingsSchema, insertCommissionSchema, insertActivityTemplateSchema } from "@shared/schema";
+import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema, updateSettingsSchema, insertCommissionSchema, insertActivityTemplateSchema, insertReminderSchema } from "@shared/schema";
 import multer from "multer";
 import mammoth from "mammoth";
 import fs from "fs";
@@ -793,6 +793,73 @@ export function registerRoutes(httpServer: Server, app: Express) {
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
+  });
+
+  // ── Reminders (Wiedervorlagen) ────────────────────────────────────────────
+  app.get("/api/reminders", (req, res) => {
+    const customerId = req.query.customerId ? Number(req.query.customerId) : undefined;
+    const status = req.query.status ? String(req.query.status) : undefined;
+    const filter = req.query.filter ? String(req.query.filter) : undefined;
+
+    let list;
+    if (filter === "today") {
+      list = storage.getRemindersForToday();
+    } else if (filter === "overdue") {
+      list = storage.getRemindersOverdue();
+    } else {
+      list = storage.getReminders({ customerId, status });
+    }
+
+    // Enrich with customer name
+    const allCustomers = storage.getCustomers();
+    const customerMap = new Map(allCustomers.map((c) => [c.id, c]));
+    const enriched = list.map((r) => ({
+      ...r,
+      customerName: customerMap.get(r.customerId)?.companyName ?? "Unbekannt",
+    }));
+    res.json(enriched);
+  });
+
+  app.get("/api/reminders/today", (_req, res) => {
+    const list = storage.getRemindersForToday();
+    const allCustomers = storage.getCustomers();
+    const customerMap = new Map(allCustomers.map((c) => [c.id, c]));
+    res.json(list.map((r) => ({ ...r, customerName: customerMap.get(r.customerId)?.companyName ?? "Unbekannt" })));
+  });
+
+  app.get("/api/reminders/overdue", (_req, res) => {
+    const list = storage.getRemindersOverdue();
+    const allCustomers = storage.getCustomers();
+    const customerMap = new Map(allCustomers.map((c) => [c.id, c]));
+    res.json(list.map((r) => ({ ...r, customerName: customerMap.get(r.customerId)?.companyName ?? "Unbekannt" })));
+  });
+
+  app.get("/api/customers/:id/reminders", (req, res) => {
+    const customerId = Number(req.params.id);
+    const list = storage.getReminders({ customerId });
+    res.json(list);
+  });
+
+  app.post("/api/reminders", (req, res) => {
+    const result = insertReminderSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ message: result.error.message });
+    const reminder = storage.createReminder(result.data);
+    res.status(201).json(reminder);
+  });
+
+  app.patch("/api/reminders/:id", (req, res) => {
+    const partial = insertReminderSchema.partial().safeParse(req.body);
+    if (!partial.success) return res.status(400).json({ message: partial.error.message });
+    const reminder = storage.updateReminder(Number(req.params.id), partial.data);
+    if (!reminder) return res.status(404).json({ message: "Wiedervorlage nicht gefunden" });
+    res.json(reminder);
+  });
+
+  app.delete("/api/reminders/:id", (req, res) => {
+    const reminder = storage.getReminder(Number(req.params.id));
+    if (!reminder) return res.status(404).json({ message: "Wiedervorlage nicht gefunden" });
+    storage.deleteReminder(Number(req.params.id));
+    res.status(204).end();
   });
 
   return httpServer;

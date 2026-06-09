@@ -22,12 +22,13 @@ import {
 import {
   ArrowLeft, Phone, Mail, MapPin, Building2, Euro, CreditCard,
   Plus, Trash2, CheckSquare, Calendar, FileText, Loader2, Sparkles, CalendarCheck,
-  TrendingUp, Copy, RefreshCw, Settings2, AlertTriangle, CheckCircle2, Clock,
+  TrendingUp, Copy, RefreshCw, Settings2, AlertTriangle, CheckCircle2, Clock, Bell, Check,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Customer, Note, Activity, InsertNote, InsertActivity, NoteTemplate, Commission } from "@shared/schema";
+import type { Customer, Note, Activity, InsertNote, InsertActivity, NoteTemplate, Commission, Reminder } from "@shared/schema";
 import NoteEditor from "@/components/NoteEditor";
 import CommissionDialog from "@/components/CommissionDialog";
+import ReminderDialog from "@/components/ReminderDialog";
 
 const NOTE_TYPES: Record<string, string> = {
   note: "Notiz", call: "Anruf", meeting: "Meeting", email: "E-Mail",
@@ -78,6 +79,9 @@ export default function CustomerDetailPage() {
   const [deleteNoteId, setDeleteNoteId] = useState<number | null>(null);
   const [deleteActId, setDeleteActId] = useState<number | null>(null);
   const [commissionDialogOpen, setCommissionDialogOpen] = useState(false);
+  const [reminderDialogOpen, setReminderDialogOpen] = useState(false);
+  const [editReminder, setEditReminder] = useState<Reminder | null>(null);
+  const [deleteReminderId, setDeleteReminderId] = useState<number | null>(null);
 
   // Provisions-Einstellungen
   const [provForm, setProvForm] = useState({ defaultDisagio: "", defaultVolume: "" });
@@ -137,6 +141,14 @@ export default function CustomerDetailPage() {
   });
   const customerCommissions = commissionsData?.commissions ?? [];
   const customerCommissionsTotal = commissionsData?.total ?? 0;
+
+  const { data: customerReminders = [] } = useQuery<Reminder[]>({
+    queryKey: ["/api/customers", custId, "reminders"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/customers/${custId}/reminders`);
+      return r.json();
+    },
+  });
 
   // Initialize local forms once customer data arrives
   if (customer && !provInitialized) {
@@ -203,6 +215,23 @@ export default function CustomerDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/customers", custId, "activities"] });
       queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
       setDeleteActId(null);
+    },
+  });
+
+  // Mutations — Reminders
+  const markReminderDone = useMutation({
+    mutationFn: (rid: number) => apiRequest("PATCH", `/api/reminders/${rid}`, { status: "done" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId, "reminders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reminders"] });
+    },
+  });
+  const deleteReminderMutation = useMutation({
+    mutationFn: (rid: number) => apiRequest("DELETE", `/api/reminders/${rid}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId, "reminders"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/reminders"] });
+      setDeleteReminderId(null);
     },
   });
 
@@ -365,6 +394,134 @@ export default function CustomerDetailPage() {
                 </p>
               </div>
             )}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* ── Kundenakte – Übersicht ── */}
+      <Card className="overflow-hidden">
+        <div className="h-1 bg-[#0052CC]" />
+        <CardHeader className="pb-2 pt-4 px-4">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <FileText className="w-4 h-4 text-primary" /> Kundenakte – Übersicht
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            {/* Vertrag */}
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Vertrag</p>
+              {contractForm.contractEnd ? (
+                <div className={cn("flex items-center gap-1.5 text-sm font-semibold", contractStatusColor)}>
+                  {contractStatusIcon}
+                  {contractDaysLeft !== null && contractDaysLeft < 0
+                    ? `Abgelaufen`
+                    : contractDaysLeft === 0
+                    ? "Läuft heute ab"
+                    : `${contractDaysLeft}d verbleibend`}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">–</p>
+              )}
+              {contractForm.contractEnd && (
+                <p className="text-xs text-muted-foreground">
+                  bis {new Date(contractForm.contractEnd).toLocaleDateString("de-DE")}
+                </p>
+              )}
+              {contractForm.contractProduct && (
+                <p className="text-xs text-foreground font-medium">{contractForm.contractProduct}</p>
+              )}
+            </div>
+
+            {/* Terminale */}
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Terminale</p>
+              <div className="space-y-0.5">
+                <div className="flex items-center gap-1.5">
+                  <div className={cn("w-2 h-2 rounded-full shrink-0", customer.girocardDisagio != null ? "bg-green-500" : "bg-muted")} />
+                  <span className="text-xs text-foreground">Girocard</span>
+                  {customer.girocardDisagio != null && (
+                    <span className="text-[10px] text-muted-foreground">{customer.girocardDisagio.toFixed(3)}%</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className={cn("w-2 h-2 rounded-full shrink-0", customer.creditcardDisagio != null ? "bg-green-500" : "bg-muted")} />
+                  <span className="text-xs text-foreground">Kreditkarte</span>
+                  {customer.creditcardDisagio != null && (
+                    <span className="text-[10px] text-muted-foreground">{customer.creditcardDisagio.toFixed(3)}%</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className={cn("w-2 h-2 rounded-full shrink-0", customer.selectedProduct?.toLowerCase().includes("portab") ? "bg-green-500" : "bg-muted")} />
+                  <span className="text-xs text-foreground">Portable</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Provisionen */}
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Provisionen</p>
+              <p className="text-sm font-bold text-primary">
+                € {customerCommissionsTotal.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </p>
+              <p className="text-[10px] text-muted-foreground">Gesamt</p>
+              {customerCommissions[0] && (
+                <p className="text-xs text-muted-foreground">
+                  Letzte: {new Date(customerCommissions[0].date).toLocaleDateString("de-DE", { day: "2-digit", month: "short" })}
+                  {" "}· € {customerCommissions[0].amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </p>
+              )}
+            </div>
+
+            {/* Nächste Aktion */}
+            <div className="space-y-1">
+              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Nächste Aktion</p>
+              {(() => {
+                const nextReminder = customerReminders.filter((r) => r.status !== "done").sort((a, b) => a.dueDate > b.dueDate ? 1 : -1)[0];
+                const nextActivity = activities.filter((a) => !a.done && a.dueDate).sort((a, b) => (a.dueDate! > b.dueDate! ? 1 : -1))[0];
+                if (nextReminder) {
+                  const days = Math.ceil((new Date(nextReminder.dueDate).getTime() - new Date().setHours(0,0,0,0)) / 86400000);
+                  return (
+                    <>
+                      <div className={cn("flex items-center gap-1.5 text-xs font-semibold",
+                        days < 0 ? "text-destructive" : days === 0 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"
+                      )}>
+                        <Bell className="w-3 h-3" />
+                        {days < 0 ? "Überfällig" : days === 0 ? "Heute" : `in ${days}d`}
+                      </div>
+                      <p className="text-xs text-foreground truncate">{nextReminder.description}</p>
+                    </>
+                  );
+                }
+                if (nextActivity) {
+                  const days = Math.ceil((new Date(nextActivity.dueDate!).getTime() - new Date().setHours(0,0,0,0)) / 86400000);
+                  return (
+                    <>
+                      <div className={cn("flex items-center gap-1.5 text-xs font-semibold",
+                        days < 0 ? "text-destructive" : days === 0 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"
+                      )}>
+                        <Calendar className="w-3 h-3" />
+                        {days < 0 ? "Überfällig" : days === 0 ? "Heute" : `in ${days}d`}
+                      </div>
+                      <p className="text-xs text-foreground truncate">{nextActivity.description}</p>
+                    </>
+                  );
+                }
+                if (contractDaysLeft !== null && contractDaysLeft > 0 && contractDaysLeft <= 90) {
+                  return (
+                    <>
+                      <div className={cn("flex items-center gap-1.5 text-xs font-semibold",
+                        contractDaysLeft < 60 ? "text-destructive" : "text-amber-600 dark:text-amber-400"
+                      )}>
+                        <RefreshCw className="w-3 h-3" />
+                        Verlängerung in {contractDaysLeft}d
+                      </div>
+                    </>
+                  );
+                }
+                return <p className="text-sm text-muted-foreground">–</p>;
+              })()}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -765,6 +922,155 @@ export default function CustomerDetailPage() {
         onClose={() => setCommissionDialogOpen(false)}
         preselectedCustomerId={custId}
       />
+
+      {/* ── Wiedervorlagen ── */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Bell className="w-4 h-4 text-amber-500" /> Wiedervorlagen
+              {customerReminders.filter((r) => r.status !== "done").length > 0 && (
+                <span className="flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                  {customerReminders.filter((r) => r.status !== "done").length}
+                </span>
+              )}
+            </CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => { setEditReminder(null); setReminderDialogOpen(true); }}
+            >
+              <Plus className="w-3 h-3" /> Wiedervorlage hinzufügen
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          {customerReminders.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground">
+              <Bell className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
+              <p className="text-xs">Noch keine Wiedervorlagen für diesen Kunden</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {[...customerReminders]
+                .sort((a, b) => {
+                  if (a.status === "done" && b.status !== "done") return 1;
+                  if (a.status !== "done" && b.status === "done") return -1;
+                  return a.dueDate > b.dueDate ? 1 : -1;
+                })
+                .map((r) => {
+                  const today = new Date().toISOString().split("T")[0];
+                  const isOverdue = r.dueDate < today && r.status !== "done";
+                  const isToday = r.dueDate === today && r.status !== "done";
+                  const days = Math.ceil((new Date(r.dueDate).getTime() - new Date().setHours(0,0,0,0)) / 86400000);
+                  return (
+                    <div
+                      key={r.id}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors",
+                        r.status === "done"
+                          ? "bg-muted/30 border-border opacity-60"
+                          : isOverdue
+                          ? "bg-destructive/5 border-destructive/30"
+                          : isToday
+                          ? "bg-amber-50/60 dark:bg-amber-950/20 border-amber-200/40 dark:border-amber-800/30"
+                          : "bg-secondary/30 border-border"
+                      )}
+                    >
+                      {/* Done toggle */}
+                      <button
+                        onClick={() => r.status !== "done" && markReminderDone.mutate(r.id)}
+                        className={cn(
+                          "shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
+                          r.status === "done"
+                            ? "bg-green-500 border-green-500"
+                            : isOverdue
+                            ? "border-destructive hover:bg-destructive/20"
+                            : "border-muted-foreground hover:border-green-500"
+                        )}
+                      >
+                        {r.status === "done" && <Check className="w-3 h-3 text-white" />}
+                      </button>
+
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <p className={cn(
+                          "text-sm text-foreground truncate",
+                          r.status === "done" && "line-through text-muted-foreground"
+                        )}>
+                          {r.description}
+                        </p>
+                        <p className={cn(
+                          "text-[10px] font-semibold mt-0.5",
+                          isOverdue ? "text-destructive" : isToday ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                        )}>
+                          {r.status === "done"
+                            ? "Erledigt"
+                            : isOverdue
+                            ? `Überfällig (${new Date(r.dueDate).toLocaleDateString("de-DE")})`
+                            : isToday
+                            ? "Heute fällig"
+                            : `Fällig: ${new Date(r.dueDate).toLocaleDateString("de-DE")} (in ${days}d)`
+                          }
+                        </p>
+                      </div>
+
+                      {/* Actions */}
+                      <div className="flex items-center gap-1 shrink-0">
+                        {r.status !== "done" && (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
+                            onClick={() => { setEditReminder(r); setReminderDialogOpen(true); }}
+                          >
+                            ✏️
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                          onClick={() => setDeleteReminderId(r.id)}
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Reminder Dialog */}
+      <ReminderDialog
+        open={reminderDialogOpen}
+        onClose={() => { setReminderDialogOpen(false); setEditReminder(null); }}
+        preselectedCustomerId={custId}
+        editReminder={editReminder}
+      />
+
+      {/* Delete Reminder */}
+      <AlertDialog open={deleteReminderId !== null} onOpenChange={(o) => !o && setDeleteReminderId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Wiedervorlage löschen?</AlertDialogTitle>
+            <AlertDialogDescription>Diese Aktion kann nicht rückgängig gemacht werden.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteReminderId && deleteReminderMutation.mutate(deleteReminderId)}
+            >
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Tabs: Notes / Activities */}
       <div>

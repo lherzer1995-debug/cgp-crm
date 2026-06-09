@@ -14,6 +14,7 @@ import SettingsPage from "@/pages/SettingsPage";
 import AnalyticsPage from "@/pages/Analytics";
 import DataManagementPage from "@/pages/DataManagement";
 import CommissionsPage from "@/pages/CommissionsPage";
+import CockpitPage from "@/pages/CockpitPage";
 import NotFound from "@/pages/not-found";
 import { useEffect, useState } from "react";
 import { Calendar, Loader2, ExternalLink } from "lucide-react";
@@ -163,6 +164,7 @@ function CRMApp() {
       <Layout>
         <Switch>
           <Route path="/" component={DashboardPage} />
+          <Route path="/cockpit" component={CockpitPage} />
           <Route path="/customers" component={CustomersPage} />
           <Route path="/customers/:id" component={CustomerDetailPage} />
           <Route path="/tasks" component={TasksPage} />

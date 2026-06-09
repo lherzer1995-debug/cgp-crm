@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import {
   Users, Euro, ArrowRight, Clock,
   CalendarClock, CheckCircle2, CheckSquare, Square, Building2, AlertCircle,
+  Bell, AlertTriangle, Check,
 } from "lucide-react";
-import type { Customer, Activity } from "@shared/schema";
+import type { Customer, Activity, Reminder } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
 const ACT_LABEL: Record<string, string> = {
@@ -60,9 +61,18 @@ function dueDateLabel(dueDate: string, dueTime?: string | null): { label: string
   };
 }
 
+type EnrichedReminder = Reminder & { customerName: string };
+
 export default function DashboardPage() {
   const { data: customers = [], isLoading: cLoad } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
   const { data: activities = [], isLoading: aLoad } = useQuery<Activity[]>({ queryKey: ["/api/activities"] });
+  const { data: reminders = [], isLoading: rLoad } = useQuery<EnrichedReminder[]>({
+    queryKey: ["/api/reminders"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/reminders");
+      return r.json();
+    },
+  });
 
   const custMap = Object.fromEntries(customers.map((c) => [c.id, c]));
 
@@ -73,6 +83,11 @@ export default function DashboardPage() {
   });
 
   const totalVol = customers.reduce((s, c) => s + (c.paymentVolume || 0), 0);
+
+  const today = new Date().toISOString().split("T")[0];
+  const overdueReminders = reminders.filter((r) => r.dueDate < today && r.status !== "done");
+  const todayReminders = reminders.filter((r) => r.dueDate === today && r.status !== "done");
+  const topReminders = [...overdueReminders, ...todayReminders].slice(0, 3);
 
   // Aufgaben sortiert nach Datum
   const pending = activities
@@ -125,6 +140,73 @@ export default function DashboardPage() {
         <StatCard label="Monatl. Volumen" value={`€ ${totalVol.toLocaleString("de-DE")}`}
           icon={Euro} accent="bg-primary" loading={cLoad} />
       </div>
+
+      {/* Tagescockpit Vorschau */}
+      {(overdueReminders.length > 0 || todayReminders.length > 0) && (
+        <Card className="overflow-hidden">
+          <div className="h-1 bg-amber-400" />
+          <CardHeader className="pb-2 pt-4 px-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                <Bell className="w-4 h-4 text-amber-500" />
+                Tagescockpit
+                {overdueReminders.length > 0 && (
+                  <span className="flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
+                    {overdueReminders.length}
+                  </span>
+                )}
+              </CardTitle>
+              <Link href="/cockpit">
+                <a className="text-xs text-primary hover:underline flex items-center gap-1 font-medium">
+                  Alle <ArrowRight className="w-3 h-3" />
+                </a>
+              </Link>
+            </div>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            {rLoad ? (
+              <div className="space-y-2">{[1, 2].map((i) => <Skeleton key={i} className="h-10 w-full rounded-lg" />)}</div>
+            ) : (
+              <div className="space-y-1.5">
+                {topReminders.map((r) => {
+                  const isOverdue = r.dueDate < today;
+                  return (
+                    <div
+                      key={r.id}
+                      className={cn(
+                        "flex items-center gap-3 px-3 py-2 rounded-lg",
+                        isOverdue ? "bg-destructive/5 border border-destructive/20" : "bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/40 dark:border-amber-800/30"
+                      )}
+                    >
+                      {isOverdue
+                        ? <AlertTriangle className="w-3.5 h-3.5 text-destructive shrink-0" />
+                        : <Bell className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                      }
+                      <div className="flex-1 min-w-0">
+                        <Link href={`/customers/${r.customerId}`}>
+                          <a className="text-[10px] font-semibold text-primary hover:underline">{r.customerName}</a>
+                        </Link>
+                        <p className="text-xs text-foreground truncate">{r.description}</p>
+                      </div>
+                      <span className={cn(
+                        "text-[10px] font-semibold shrink-0",
+                        isOverdue ? "text-destructive" : "text-amber-600 dark:text-amber-400"
+                      )}>
+                        {isOverdue ? "Überfällig" : "Heute"}
+                      </span>
+                    </div>
+                  );
+                })}
+                {(overdueReminders.length + todayReminders.length) > 3 && (
+                  <p className="text-xs text-muted-foreground text-center pt-1">
+                    +{overdueReminders.length + todayReminders.length - 3} weitere im Cockpit
+                  </p>
+                )}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Mittlere Reihe */}
       <div className="grid grid-cols-1 gap-4">

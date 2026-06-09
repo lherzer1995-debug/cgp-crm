@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import {
-  customers, notes, activities, attachments, noteTemplates, settings, commissions, activityTemplates,
+  customers, notes, activities, attachments, noteTemplates, settings, commissions, activityTemplates, reminders,
   type Customer, type InsertCustomer,
   type Note, type InsertNote,
   type Activity, type InsertActivity,
@@ -11,6 +11,7 @@ import {
   type Settings, type InsertSettings,
   type Commission, type InsertCommission,
   type ActivityTemplate, type InsertActivityTemplate,
+  type Reminder, type InsertReminder,
 } from "@shared/schema";
 
 // On Render: use persistent disk at /data/data.db, otherwise local data.db
@@ -112,6 +113,15 @@ sqlite.exec(`
     recurrence TEXT NOT NULL DEFAULT 'none',
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE TABLE IF NOT EXISTS reminders (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER NOT NULL,
+    description TEXT NOT NULL,
+    due_date TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // Run migrations for existing databases (ALTER TABLE IF NOT EXISTS column)
@@ -173,6 +183,14 @@ export interface IStorage {
   getActivityTemplate(id: number): ActivityTemplate | undefined;
   createActivityTemplate(data: InsertActivityTemplate): ActivityTemplate;
   deleteActivityTemplate(id: number): void;
+  // Reminders
+  getReminders(filters?: { customerId?: number; status?: string }): Reminder[];
+  getRemindersForToday(): Reminder[];
+  getRemindersOverdue(): Reminder[];
+  getReminder(id: number): Reminder | undefined;
+  createReminder(data: InsertReminder): Reminder;
+  updateReminder(id: number, data: Partial<InsertReminder>): Reminder | undefined;
+  deleteReminder(id: number): void;
 }
 
 class Storage implements IStorage {
@@ -345,6 +363,46 @@ class Storage implements IStorage {
   }
   deleteActivityTemplate(id: number): void {
     db.delete(activityTemplates).where(eq(activityTemplates.id, id)).run();
+  }
+
+  // ── Reminders ────────────────────────────────────────────────────────────
+  getReminders(filters?: { customerId?: number; status?: string }): Reminder[] {
+    let all = db.select().from(reminders).all();
+    if (filters?.customerId != null) {
+      all = all.filter((r) => r.customerId === filters.customerId);
+    }
+    if (filters?.status != null) {
+      all = all.filter((r) => r.status === filters.status);
+    }
+    return all.sort((a, b) => (a.dueDate > b.dueDate ? 1 : -1));
+  }
+  getRemindersForToday(): Reminder[] {
+    const today = new Date().toISOString().split("T")[0];
+    return db.select().from(reminders).all()
+      .filter((r) => r.dueDate === today && r.status !== "done")
+      .sort((a, b) => (a.dueDate > b.dueDate ? 1 : -1));
+  }
+  getRemindersOverdue(): Reminder[] {
+    const today = new Date().toISOString().split("T")[0];
+    return db.select().from(reminders).all()
+      .filter((r) => r.dueDate < today && r.status !== "done")
+      .sort((a, b) => (a.dueDate > b.dueDate ? 1 : -1));
+  }
+  getReminder(id: number): Reminder | undefined {
+    return db.select().from(reminders).where(eq(reminders.id, id)).get();
+  }
+  createReminder(data: InsertReminder): Reminder {
+    return db.insert(reminders).values(data).returning().get();
+  }
+  updateReminder(id: number, data: Partial<InsertReminder>): Reminder | undefined {
+    return db.update(reminders)
+      .set({ ...data, updatedAt: new Date().toISOString() })
+      .where(eq(reminders.id, id))
+      .returning()
+      .get();
+  }
+  deleteReminder(id: number): void {
+    db.delete(reminders).where(eq(reminders.id, id)).run();
   }
 }
 
