@@ -23,10 +23,12 @@ import {
 import {
   ArrowLeft, Phone, Mail, MapPin, Building2, Euro, CreditCard,
   Plus, Trash2, CheckSquare, Square, Calendar, FileText, Pencil, Loader2, Sparkles, CalendarCheck,
+  TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Customer, Note, Activity, InsertNote, InsertActivity, NoteTemplate } from "@shared/schema";
+import type { Customer, Note, Activity, InsertNote, InsertActivity, NoteTemplate, Commission } from "@shared/schema";
 import NoteEditor from "@/components/NoteEditor";
+import CommissionDialog from "@/components/CommissionDialog";
 
 const STATUS_LABEL: Record<string, string> = {
   lead: "Lead", prospect: "Prospect", active: "Aktiv", churned: "Abgewandert",
@@ -79,6 +81,7 @@ export default function CustomerDetailPage() {
   const [actDialog, setActDialog] = useState(false);
   const [deleteNoteId, setDeleteNoteId] = useState<number | null>(null);
   const [deleteActId, setDeleteActId] = useState<number | null>(null);
+  const [commissionDialogOpen, setCommissionDialogOpen] = useState(false);
 
   // Forms
   const [noteForm, setNoteForm] = useState<Partial<InsertNote>>({ title: "", content: "", type: "note" });
@@ -113,6 +116,15 @@ export default function CustomerDetailPage() {
       return r.json();
     },
   });
+  const { data: commissionsData } = useQuery<{ commissions: Commission[]; total: number }>({
+    queryKey: ["/api/customers", custId, "commissions"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/customers/${custId}/commissions`);
+      return r.json();
+    },
+  });
+  const customerCommissions = commissionsData?.commissions ?? [];
+  const customerCommissionsTotal = commissionsData?.total ?? 0;
 
   // Mutations — Notes
   const createNote = useMutation({
@@ -369,6 +381,84 @@ export default function CustomerDetailPage() {
           )}
         </div>
       )}
+
+      {/* Commissions Card */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-primary" /> Provisionen
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5"
+                onClick={() => setCommissionDialogOpen(true)}
+              >
+                <Plus className="w-3 h-3" /> Neue Provision
+              </Button>
+              <Link href={`/commissions?customerId=${custId}`}>
+                <a className="text-xs text-primary hover:underline font-medium">
+                  Alle anzeigen →
+                </a>
+              </Link>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          {/* Total */}
+          <div className="flex items-center justify-between mb-3 p-3 rounded-lg bg-primary/5 border border-primary/10">
+            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+              Gesamt-Provision
+            </span>
+            <span className="text-lg font-black text-primary">
+              € {customerCommissionsTotal.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </span>
+          </div>
+
+          {/* Last 5 commissions */}
+          {customerCommissions.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground">
+              <Euro className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
+              <p className="text-xs">Noch keine Provisionen für diesen Kunden</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {customerCommissions.slice(0, 5).map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">
+                      {new Date(c.date).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
+                    </span>
+                    {c.description && (
+                      <span className="text-xs text-foreground truncate">{c.description}</span>
+                    )}
+                  </div>
+                  <span className="text-sm font-bold text-foreground whitespace-nowrap ml-3">
+                    € {c.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              ))}
+              {customerCommissions.length > 5 && (
+                <p className="text-xs text-muted-foreground text-center pt-1">
+                  +{customerCommissions.length - 5} weitere
+                </p>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Commission Dialog */}
+      <CommissionDialog
+        open={commissionDialogOpen}
+        onClose={() => setCommissionDialogOpen(false)}
+        preselectedCustomerId={custId}
+      />
 
       {/* Tabs: Notes / Activities */}
       <div>
