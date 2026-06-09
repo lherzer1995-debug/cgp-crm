@@ -23,12 +23,20 @@ import {
   ArrowLeft, Phone, Mail, MapPin, Building2, Euro, CreditCard,
   Plus, Trash2, CheckSquare, Calendar, FileText, Loader2, Sparkles, CalendarCheck,
   TrendingUp, Copy, RefreshCw, Settings2, AlertTriangle, CheckCircle2, Clock, Bell, Check,
+  Monitor, Pencil,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Customer, Note, Activity, InsertNote, InsertActivity, NoteTemplate, Commission, Reminder } from "@shared/schema";
 import NoteEditor from "@/components/NoteEditor";
 import CommissionDialog from "@/components/CommissionDialog";
 import ReminderDialog from "@/components/ReminderDialog";
+import TerminalDialog from "@/components/TerminalDialog";
+import ContractCard from "@/components/ContractCard";
+import {
+  parseTerminals, terminalStatusLabel, terminalStatusClass,
+  calculateContractEnd, calculateCancellationDeadline, getDaysUntilEnd,
+} from "@/lib/contractHelpers";
+import type { Terminal } from "@/lib/contractHelpers";
 
 const NOTE_TYPES: Record<string, string> = {
   note: "Notiz", call: "Anruf", meeting: "Meeting", email: "E-Mail",
@@ -89,9 +97,21 @@ export default function CustomerDetailPage() {
   const [provInitialized, setProvInitialized] = useState(false);
 
   // Vertrag
-  const [contractForm, setContractForm] = useState({ contractEnd: "", contractProduct: "" });
+  const [contractForm, setContractForm] = useState({
+    contractEnd: "",
+    contractProduct: "",
+    contractStart: "",
+    contractTermMonths: "",
+    cancellationNoticeDays: "",
+  });
   const [contractSaving, setContractSaving] = useState(false);
   const [contractInitialized, setContractInitialized] = useState(false);
+
+  // Terminals
+  const [terminals, setTerminals] = useState<Terminal[]>([]);
+  const [terminalDialogOpen, setTerminalDialogOpen] = useState(false);
+  const [editTerminalIndex, setEditTerminalIndex] = useState<number | null>(null);
+  const [terminalsSaving, setTerminalsSaving] = useState(false);
 
   // KI-Zusammenfassung
   const [aiSummary, setAiSummary] = useState("");
@@ -163,7 +183,11 @@ export default function CustomerDetailPage() {
     setContractForm({
       contractEnd: customer.contractEnd ?? "",
       contractProduct: customer.contractProduct ?? "",
+      contractStart: customer.contractStart ?? "",
+      contractTermMonths: customer.contractTermMonths != null ? String(customer.contractTermMonths) : "",
+      cancellationNoticeDays: customer.cancellationNoticeDays != null ? String(customer.cancellationNoticeDays) : "",
     });
+    setTerminals(parseTerminals(customer.terminals));
   }
 
   // Mutations — Notes
@@ -255,9 +279,21 @@ export default function CustomerDetailPage() {
   const saveContractSettings = async () => {
     setContractSaving(true);
     try {
+      const termMonths = contractForm.contractTermMonths ? parseInt(contractForm.contractTermMonths, 10) : null;
+      const noticeDays = contractForm.cancellationNoticeDays ? parseInt(contractForm.cancellationNoticeDays, 10) : null;
+      // Auto-calculate contractEnd if start + term are set but end is empty
+      let contractEnd = contractForm.contractEnd || null;
+      if (!contractEnd && contractForm.contractStart && termMonths) {
+        contractEnd = calculateContractEnd(contractForm.contractStart, termMonths);
+        const newEnd = contractEnd;
+        setContractForm((f) => ({ ...f, contractEnd: newEnd ?? "" }));
+      }
       await apiRequest("PATCH", `/api/customers/${custId}`, {
-        contractEnd: contractForm.contractEnd || null,
+        contractEnd: contractEnd,
         contractProduct: contractForm.contractProduct || null,
+        contractStart: contractForm.contractStart || null,
+        contractTermMonths: termMonths,
+        cancellationNoticeDays: noticeDays,
       });
       queryClient.invalidateQueries({ queryKey: ["/api/customers", custId] });
       toast({ title: "Vertragseinstellungen gespeichert ✓" });
@@ -266,6 +302,38 @@ export default function CustomerDetailPage() {
     } finally {
       setContractSaving(false);
     }
+  };
+
+  const saveTerminals = async (updatedTerminals: Terminal[]) => {
+    setTerminalsSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/customers/${custId}`, {
+        terminals: JSON.stringify(updatedTerminals),
+      });
+      setTerminals(updatedTerminals);
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId] });
+      toast({ title: "Terminals gespeichert ✓" });
+    } catch (err: any) {
+      toast({ title: "Fehler", description: err.message, variant: "destructive" });
+    } finally {
+      setTerminalsSaving(false);
+    }
+  };
+
+  const handleTerminalSave = (terminal: Terminal) => {
+    const updated = [...terminals];
+    if (editTerminalIndex !== null) {
+      updated[editTerminalIndex] = terminal;
+    } else {
+      updated.push(terminal);
+    }
+    saveTerminals(updated);
+    setEditTerminalIndex(null);
+  };
+
+  const handleTerminalDelete = (index: number) => {
+    const updated = terminals.filter((_, i) => i !== index);
+    saveTerminals(updated);
   };
 
   const createRenewalTask = async () => {
@@ -352,6 +420,17 @@ export default function CustomerDetailPage() {
     contractDaysLeft < 60 ? <AlertTriangle className="w-3.5 h-3.5" /> :
     contractDaysLeft < 90 ? <Clock className="w-3.5 h-3.5" /> :
     <CheckCircle2 className="w-3.5 h-3.5" />;
+
+  // Cancellation deadline
+  const cancellationDeadline =
+    contractForm.contractEnd && contractForm.cancellationNoticeDays
+      ? calculateCancellationDeadline(contractForm.contractEnd, parseInt(contractForm.cancellationNoticeDays, 10))
+      : null;
+
+  // Commission stats
+  const commissionAvg = customerCommissions.length > 0
+    ? customerCommissionsTotal / customerCommissions.length
+    : 0;
 
   return (
     <div className="space-y-5 max-w-5xl">
@@ -657,17 +736,74 @@ export default function CustomerDetailPage() {
         </div>
       )}
 
-      {/* ── Vertrag + Provisions-Einstellungen ── */}
+      {/* ── Vertrag & Terminals (Übersicht) ── */}
+      <ContractCard
+        contractProduct={contractForm.contractProduct || customer.contractProduct}
+        contractStart={contractForm.contractStart || customer.contractStart}
+        contractEnd={contractForm.contractEnd || customer.contractEnd}
+        contractTermMonths={contractForm.contractTermMonths ? parseInt(contractForm.contractTermMonths, 10) : customer.contractTermMonths}
+        cancellationNoticeDays={contractForm.cancellationNoticeDays ? parseInt(contractForm.cancellationNoticeDays, 10) : customer.cancellationNoticeDays}
+        terminalsJson={terminals.length > 0 ? JSON.stringify(terminals) : customer.terminals}
+      />
+
+      {/* ── Vertrag bearbeiten + Provisions-Einstellungen ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-        {/* Vertrag */}
+        {/* Vertrag bearbeiten */}
         <Card>
           <CardHeader className="pb-2 pt-4 px-4">
             <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-primary" /> Vertrag
+              <Calendar className="w-4 h-4 text-primary" /> Vertrag bearbeiten
             </CardTitle>
           </CardHeader>
           <CardContent className="px-4 pb-4 space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="contract-product">Produkt</Label>
+              <Input
+                id="contract-product"
+                value={contractForm.contractProduct}
+                onChange={(e) => setContractForm((f) => ({ ...f, contractProduct: e.target.value }))}
+                placeholder="z.B. EC-Terminal stationär"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="contract-start">Vertragsbeginn</Label>
+                <Input
+                  id="contract-start"
+                  type="date"
+                  value={contractForm.contractStart}
+                  onChange={(e) => {
+                    const start = e.target.value;
+                    setContractForm((f) => {
+                      // Auto-calculate end date if term is set
+                      const months = f.contractTermMonths ? parseInt(f.contractTermMonths, 10) : null;
+                      const newEnd = start && months ? calculateContractEnd(start, months) : f.contractEnd;
+                      return { ...f, contractStart: start, contractEnd: newEnd };
+                    });
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="contract-term">Laufzeit (Monate)</Label>
+                <Input
+                  id="contract-term"
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={contractForm.contractTermMonths}
+                  onChange={(e) => {
+                    const months = e.target.value;
+                    setContractForm((f) => {
+                      const m = parseInt(months, 10);
+                      const newEnd = f.contractStart && m > 0 ? calculateContractEnd(f.contractStart, m) : f.contractEnd;
+                      return { ...f, contractTermMonths: months, contractEnd: newEnd };
+                    });
+                  }}
+                  placeholder="z.B. 24"
+                />
+              </div>
+            </div>
             <div className="space-y-1.5">
               <Label htmlFor="contract-end">Vertragsende</Label>
               <Input
@@ -688,13 +824,28 @@ export default function CustomerDetailPage() {
               )}
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="contract-product">Produkt</Label>
+              <Label htmlFor="contract-notice">Kündigungsfrist (Tage)</Label>
               <Input
-                id="contract-product"
-                value={contractForm.contractProduct}
-                onChange={(e) => setContractForm((f) => ({ ...f, contractProduct: e.target.value }))}
-                placeholder="z.B. EC-Terminal stationär"
+                id="contract-notice"
+                type="number"
+                min="0"
+                step="1"
+                value={contractForm.cancellationNoticeDays}
+                onChange={(e) => setContractForm((f) => ({ ...f, cancellationNoticeDays: e.target.value }))}
+                placeholder="z.B. 30"
               />
+              {cancellationDeadline && (
+                <p className="text-[11px] text-muted-foreground">
+                  Kündigungsstichtag:{" "}
+                  <strong className={cn(
+                    getDaysUntilEnd(cancellationDeadline) < 14 && getDaysUntilEnd(cancellationDeadline) >= 0
+                      ? "text-red-600 dark:text-red-400"
+                      : ""
+                  )}>
+                    {new Date(cancellationDeadline).toLocaleDateString("de-DE")}
+                  </strong>
+                </p>
+              )}
             </div>
             <div className="flex gap-2 pt-1">
               <Button
@@ -707,9 +858,19 @@ export default function CustomerDetailPage() {
                 {contractSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
                 Speichern
               </Button>
-              {contractForm.contractEnd && (
+              {contractForm.contractEnd && contractDaysLeft !== null && contractDaysLeft <= 60 && contractDaysLeft >= 0 && (
                 <Button
                   size="sm"
+                  className="flex-1 h-8 text-xs gap-1.5 bg-amber-600 hover:bg-amber-700"
+                  onClick={createRenewalTask}
+                >
+                  <RefreshCw className="w-3 h-3" /> Verlängerungsaufgabe
+                </Button>
+              )}
+              {contractForm.contractEnd && (contractDaysLeft === null || contractDaysLeft > 60) && (
+                <Button
+                  size="sm"
+                  variant="ghost"
                   className="flex-1 h-8 text-xs gap-1.5"
                   onClick={createRenewalTask}
                 >
@@ -779,6 +940,80 @@ export default function CustomerDetailPage() {
           </CardContent>
         </Card>
       </div>
+
+      {/* ── Terminals verwalten ── */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Monitor className="w-4 h-4 text-primary" /> Terminals verwalten
+            </CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => { setEditTerminalIndex(null); setTerminalDialogOpen(true); }}
+            >
+              <Plus className="w-3 h-3" /> Terminal hinzufügen
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          {terminals.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground">
+              <Monitor className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
+              <p className="text-xs">Noch keine Terminals erfasst</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/40 border-b border-border">
+                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Typ</th>
+                    <th className="text-center px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Anzahl</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Status</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground text-right">Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {terminals.map((t, i) => (
+                    <tr key={i} className={cn("border-b border-border last:border-0", i % 2 === 1 && "bg-muted/20")}>
+                      <td className="px-3 py-2 font-medium text-foreground">{t.type}</td>
+                      <td className="px-3 py-2 text-center font-bold text-foreground">{t.count}</td>
+                      <td className="px-3 py-2">
+                        <span className={cn("text-xs font-semibold", terminalStatusClass(t.status))}>
+                          {terminalStatusLabel(t.status)}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                            onClick={() => { setEditTerminalIndex(i); setTerminalDialogOpen(true); }}
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => handleTerminalDelete(i)}
+                            disabled={terminalsSaving}
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* ── KI-Zusammenfassung ── */}
       <Card>
@@ -870,14 +1105,26 @@ export default function CustomerDetailPage() {
           </div>
         </CardHeader>
         <CardContent className="px-4 pb-4">
-          {/* Total */}
-          <div className="flex items-center justify-between mb-3 p-3 rounded-lg bg-primary/5 border border-primary/10">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-              Gesamt-Provision
-            </span>
-            <span className="text-lg font-black text-primary">
-              € {customerCommissionsTotal.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-            </span>
+          {/* Total + Average */}
+          <div className="grid grid-cols-2 gap-3 mb-3">
+            <div className="flex flex-col p-3 rounded-lg bg-primary/5 border border-primary/10">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
+                Gesamt-Provision
+              </span>
+              <span className="text-lg font-black text-primary">
+                € {customerCommissionsTotal.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="flex flex-col p-3 rounded-lg bg-muted/40 border border-border">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
+                Ø pro Provision
+              </span>
+              <span className="text-lg font-black text-foreground">
+                {customerCommissions.length > 0
+                  ? `€ ${commissionAvg.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : "–"}
+              </span>
+            </div>
           </div>
 
           {/* Last 5 commissions */}
@@ -921,6 +1168,14 @@ export default function CustomerDetailPage() {
         open={commissionDialogOpen}
         onClose={() => setCommissionDialogOpen(false)}
         preselectedCustomerId={custId}
+      />
+
+      {/* Terminal Dialog */}
+      <TerminalDialog
+        open={terminalDialogOpen}
+        onClose={() => { setTerminalDialogOpen(false); setEditTerminalIndex(null); }}
+        editTerminal={editTerminalIndex !== null ? terminals[editTerminalIndex] : null}
+        onSave={handleTerminalSave}
       />
 
       {/* ── Wiedervorlagen ── */}
