@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import {
-  customers, notes, activities, attachments, noteTemplates, settings, commissions,
+  customers, notes, activities, attachments, noteTemplates, settings, commissions, activityTemplates,
   type Customer, type InsertCustomer,
   type Note, type InsertNote,
   type Activity, type InsertActivity,
@@ -10,6 +10,7 @@ import {
   type NoteTemplate, type InsertNoteTemplate,
   type Settings, type InsertSettings,
   type Commission, type InsertCommission,
+  type ActivityTemplate, type InsertActivityTemplate,
 } from "@shared/schema";
 
 // On Render: use persistent disk at /data/data.db, otherwise local data.db
@@ -103,6 +104,15 @@ sqlite.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE TABLE IF NOT EXISTS activity_templates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    description TEXT NOT NULL,
+    type TEXT NOT NULL DEFAULT 'follow_up',
+    priority TEXT NOT NULL DEFAULT 'medium',
+    recurrence TEXT NOT NULL DEFAULT 'none',
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // Run migrations for existing databases (ALTER TABLE IF NOT EXISTS column)
@@ -111,8 +121,11 @@ runMigration("ALTER TABLE activities ADD COLUMN due_time TEXT");
 runMigration("ALTER TABLE activities ADD COLUMN raw_date_text TEXT");
 runMigration("ALTER TABLE activities ADD COLUMN calendar_event_id TEXT");
 runMigration("ALTER TABLE activities ADD COLUMN completed_at TEXT");
+runMigration("ALTER TABLE activities ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium'");
 runMigration("ALTER TABLE customers ADD COLUMN last_activity_date TEXT");
 runMigration("ALTER TABLE notes ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))");
+runMigration("ALTER TABLE settings ADD COLUMN advisor_name TEXT DEFAULT 'Lars Herzer'");
+runMigration("ALTER TABLE settings ADD COLUMN monthly_commission_quota REAL");
 
 export interface IStorage {
   // Customers
@@ -152,6 +165,11 @@ export interface IStorage {
   updateCommission(id: number, data: Partial<InsertCommission>): Commission | undefined;
   deleteCommission(id: number): void;
   getCommissionSummary(year: number): { month: number; monthLabel: string; total: number; count: number }[];
+  // Activity Templates
+  getActivityTemplates(): ActivityTemplate[];
+  getActivityTemplate(id: number): ActivityTemplate | undefined;
+  createActivityTemplate(data: InsertActivityTemplate): ActivityTemplate;
+  deleteActivityTemplate(id: number): void;
 }
 
 class Storage implements IStorage {
@@ -310,6 +328,20 @@ class Storage implements IStorage {
       });
     }
     return result;
+  }
+
+  // ── Activity Templates ───────────────────────────────────────────────────
+  getActivityTemplates(): ActivityTemplate[] {
+    return db.select().from(activityTemplates).all();
+  }
+  getActivityTemplate(id: number): ActivityTemplate | undefined {
+    return db.select().from(activityTemplates).where(eq(activityTemplates.id, id)).get();
+  }
+  createActivityTemplate(data: InsertActivityTemplate): ActivityTemplate {
+    return db.insert(activityTemplates).values(data).returning().get();
+  }
+  deleteActivityTemplate(id: number): void {
+    db.delete(activityTemplates).where(eq(activityTemplates.id, id)).run();
   }
 }
 

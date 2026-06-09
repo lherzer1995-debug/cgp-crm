@@ -103,6 +103,8 @@ export type NoteTemplate = typeof noteTemplates.$inferSelect;
 export const settings = sqliteTable("settings", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   crmName: text("crm_name").notNull().default("CGP CRM"),
+  advisorName: text("advisor_name").default("Lars Herzer"),
+  monthlyCommissionQuota: real("monthly_commission_quota"),
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
   updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
@@ -136,12 +138,31 @@ export const insertCommissionSchema = createInsertSchema(commissions).omit({
 export type InsertCommission = z.infer<typeof insertCommissionSchema>;
 export type Commission = typeof commissions.$inferSelect;
 
+// ── Activity Templates (recurring tasks) ───────────────────────────────────
+export const activityTemplates = sqliteTable("activity_templates", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(),
+  description: text("description").notNull(),
+  type: text("type").notNull().default("follow_up"),
+  priority: text("priority").notNull().default("medium"), // low | medium | high
+  recurrence: text("recurrence").notNull().default("none"), // none | daily | weekly | monthly
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const insertActivityTemplateSchema = createInsertSchema(activityTemplates).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertActivityTemplate = z.infer<typeof insertActivityTemplateSchema>;
+export type ActivityTemplate = typeof activityTemplates.$inferSelect;
+
 // ── Activities (Pipeline Events) ───────────────────────────────────────────
 export const activities = sqliteTable("activities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   customerId: integer("customer_id").notNull(),
   type: text("type").notNull(), // call | demo | proposal | follow_up | closed_won | closed_lost
   description: text("description").notNull(),
+  priority: text("priority").notNull().default("medium"), // low | medium | high
   dueDate: text("due_date"),          // ISO date string (YYYY-MM-DD or full ISO)
   dueTime: text("due_time"),          // HH:MM if time was specified
   rawDateText: text("raw_date_text"), // original free-text input, e.g. "morgen 14 Uhr"

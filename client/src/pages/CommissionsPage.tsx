@@ -16,11 +16,17 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
 import {
-  TrendingUp, TrendingDown, Minus, Plus, Pencil, Trash2, Euro, Calendar,
+  TrendingUp, TrendingDown, Minus, Plus, Pencil, Trash2, Euro, Calendar, Download, Target,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import CommissionDialog from "@/components/CommissionDialog";
+import { Progress } from "@/components/ui/progress";
+import { API_BASE } from "@/lib/queryClient";
 import type { Customer, Commission } from "@shared/schema";
+
+interface AppSettings {
+  monthlyCommissionQuota?: number | null;
+}
 
 const COMMISSION_TYPES: Record<string, string> = {
   sale: "Abschluss",
@@ -78,6 +84,20 @@ export default function CommissionsPage() {
     queryKey: ["/api/customers"],
   });
 
+  const { data: appSettings } = useQuery<AppSettings>({
+    queryKey: ["/api/settings"],
+  });
+
+  const monthlyQuota = appSettings?.monthlyCommissionQuota ?? null;
+
+  const handleExportCSV = () => {
+    const url = `${API_BASE}/api/commissions/export?year=${selectedYear}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `provisionen-${selectedYear}.csv`;
+    a.click();
+  };
+
   const { data: summaryData } = useQuery<SummaryResponse>({
     queryKey: [`/api/commissions/summary?year=${selectedYear}`],
     queryFn: async () => {
@@ -132,6 +152,17 @@ export default function CommissionsPage() {
     : currentMonthTotal < prevMonthTotal ? "down"
     : "neutral";
 
+  // Average commission per sale
+  const saleCommissions = commissions.filter((c) => c.type === "sale");
+  const avgPerSale = saleCommissions.length > 0
+    ? totalYear / summary.reduce((s, m) => s + m.count, 0)
+    : 0;
+
+  // Quota progress for current month
+  const quotaPercent = monthlyQuota && monthlyQuota > 0
+    ? Math.min(Math.round((currentMonthTotal / monthlyQuota) * 100), 200)
+    : null;
+
   const yearOptions = Array.from({ length: 5 }, (_, i) => currentYear - i);
 
   return (
@@ -144,12 +175,21 @@ export default function CommissionsPage() {
             Deine Verdienst-Übersicht und Provision-Tracking
           </p>
         </div>
-        <Button
-          className="gap-2"
-          onClick={() => { setEditCommission(null); setDialogOpen(true); }}
-        >
-          <Plus className="w-4 h-4" /> Neue Provision
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            className="gap-2"
+            onClick={handleExportCSV}
+          >
+            <Download className="w-4 h-4" /> CSV exportieren
+          </Button>
+          <Button
+            className="gap-2"
+            onClick={() => { setEditCommission(null); setDialogOpen(true); }}
+          >
+            <Plus className="w-4 h-4" /> Neue Provision
+          </Button>
+        </div>
       </div>
 
       {/* Year selector */}
@@ -168,7 +208,7 @@ export default function CommissionsPage() {
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total year */}
         <Card>
           <CardContent className="p-5">
@@ -241,7 +281,55 @@ export default function CommissionsPage() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Average per entry */}
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-start justify-between">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground">
+                  Ø pro Abschluss
+                </p>
+                <p className="text-3xl font-black text-foreground mt-1">
+                  {summary.reduce((s, m) => s + m.count, 0) > 0
+                    ? `€ ${formatEur(avgPerSale)}`
+                    : "—"}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-1">Durchschnitt {selectedYear}</p>
+              </div>
+              <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <Euro className="w-5 h-5 text-purple-600 dark:text-purple-400" />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Quota progress */}
+      {quotaPercent !== null && selectedYear === currentYear && (
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <Target className="w-4 h-4 text-primary" />
+                <p className="text-sm font-semibold text-foreground">
+                  Monatsziel: {summary[currentMonthIdx]?.monthLabel}
+                </p>
+              </div>
+              <span className={cn(
+                "text-sm font-bold",
+                quotaPercent >= 100 ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400"
+              )}>
+                {quotaPercent}% erreicht
+              </span>
+            </div>
+            <Progress value={Math.min(quotaPercent, 100)} className="h-2" />
+            <p className="text-[11px] text-muted-foreground mt-1.5">
+              € {formatEur(currentMonthTotal)} von € {formatEur(monthlyQuota!)} Ziel
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Chart */}
       <Card>

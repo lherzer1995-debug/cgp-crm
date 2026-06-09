@@ -6,13 +6,20 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, XCircle, Calendar, Loader2, LogOut, ExternalLink, FileText, Plus, Trash2, Pencil } from "lucide-react";
+import { Switch } from "@/components/ui/switch";
+import { CheckCircle2, XCircle, Calendar, Loader2, LogOut, ExternalLink, FileText, Plus, Trash2, Pencil, Bell, User, Euro, ListChecks } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { queryClient, apiRequest, API_BASE } from "@/lib/queryClient";
-import type { NoteTemplate } from "@shared/schema";
+import { requestNotificationPermission } from "@/lib/notifications";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import type { NoteTemplate, ActivityTemplate } from "@shared/schema";
 
 interface AppSettings {
   crmName: string;
+  advisorName?: string;
+  monthlyCommissionQuota?: number | null;
 }
 
 interface GCalStatus {
@@ -40,15 +47,26 @@ export default function SettingsPage() {
   const [location] = useLocation();
   const [flashMessage, setFlashMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [templateForm, setTemplateForm] = useState({ name: "", content: "" });
+  const [actTemplateForm, setActTemplateForm] = useState({ name: "", description: "", type: "follow_up", priority: "medium", recurrence: "none" });
   const [crmNameInput, setCrmNameInput] = useState("");
+  const [advisorNameInput, setAdvisorNameInput] = useState("");
+  const [quotaInput, setQuotaInput] = useState("");
+  const [notificationsEnabled, setNotificationsEnabled] = useState(() => {
+    return localStorage.getItem("notificationsEnabled") === "true";
+  });
+  const [reminderMinutes, setReminderMinutes] = useState(() => {
+    return localStorage.getItem("reminderMinutes") ?? "15";
+  });
 
-  // App Settings (CRM name)
+  // App Settings (CRM name, advisor name, quota)
   const { data: appSettings } = useQuery<AppSettings>({
     queryKey: ["/api/settings"],
   });
   useEffect(() => {
     if (appSettings?.crmName) setCrmNameInput(appSettings.crmName);
-  }, [appSettings?.crmName]);
+    if (appSettings?.advisorName) setAdvisorNameInput(appSettings.advisorName);
+    if (appSettings?.monthlyCommissionQuota != null) setQuotaInput(String(appSettings.monthlyCommissionQuota));
+  }, [appSettings?.crmName, appSettings?.advisorName, appSettings?.monthlyCommissionQuota]);
   const updateSettings = useMutation({
     mutationFn: (data: Partial<AppSettings>) => apiRequest("PUT", "/api/settings", data),
     onSuccess: () => {
@@ -74,6 +92,22 @@ export default function SettingsPage() {
   const deleteTemplate = useMutation({
     mutationFn: (id: number) => apiRequest("DELETE", `/api/note-templates/${id}`),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/note-templates"] }),
+  });
+
+  // Activity Templates
+  const { data: actTemplates = [] } = useQuery<ActivityTemplate[]>({
+    queryKey: ["/api/activity-templates"],
+  });
+  const createActTemplate = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/activity-templates", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/activity-templates"] });
+      setActTemplateForm({ name: "", description: "", type: "follow_up", priority: "medium", recurrence: "none" });
+    },
+  });
+  const deleteActTemplate = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/activity-templates/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/activity-templates"] }),
   });
 
   // Parse ?gcal= query param from the hash-based URL after OAuth redirect
@@ -351,6 +385,246 @@ export default function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Personal Settings */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <User className="w-4 h-4 text-primary" />
+            Persönliche Einstellungen
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="space-y-1.5">
+            <Label htmlFor="advisor-name">Dein Name</Label>
+            <div className="flex gap-2">
+              <Input
+                id="advisor-name"
+                value={advisorNameInput}
+                onChange={(e) => setAdvisorNameInput(e.target.value)}
+                placeholder="z.B. Lars Herzer"
+                className="max-w-xs"
+              />
+              <Button
+                size="sm"
+                className="min-h-[40px]"
+                onClick={() => {
+                  if (!advisorNameInput.trim()) return;
+                  updateSettings.mutate({ advisorName: advisorNameInput.trim() });
+                }}
+                disabled={updateSettings.isPending || !advisorNameInput.trim() || advisorNameInput.trim() === appSettings?.advisorName}
+              >
+                {updateSettings.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Speichern"}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Notifications */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Bell className="w-4 h-4 text-amber-500" />
+            Benachrichtigungen
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Erhalte Browser-Benachrichtigungen für überfällige und bald fällige Aufgaben.
+          </p>
+          <div className="flex items-center gap-3">
+            <Switch
+              id="notif-toggle"
+              checked={notificationsEnabled}
+              onCheckedChange={async (checked) => {
+                if (checked) {
+                  const perm = await requestNotificationPermission();
+                  if (perm !== "granted") {
+                    setFlashMessage({ type: "error", text: "Browser-Benachrichtigungen wurden nicht erlaubt. Bitte in den Browser-Einstellungen aktivieren." });
+                    return;
+                  }
+                }
+                setNotificationsEnabled(checked);
+                localStorage.setItem("notificationsEnabled", String(checked));
+              }}
+            />
+            <Label htmlFor="notif-toggle">Browser-Benachrichtigungen aktivieren</Label>
+          </div>
+          {notificationsEnabled && (
+            <div className="space-y-1.5">
+              <Label>Erinnerung vor Fälligkeit</Label>
+              <Select value={reminderMinutes} onValueChange={(v) => {
+                setReminderMinutes(v);
+                localStorage.setItem("reminderMinutes", v);
+              }}>
+                <SelectTrigger className="max-w-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="5">5 Minuten vorher</SelectItem>
+                  <SelectItem value="15">15 Minuten vorher</SelectItem>
+                  <SelectItem value="30">30 Minuten vorher</SelectItem>
+                  <SelectItem value="60">60 Minuten vorher</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Commission Quota */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Euro className="w-4 h-4 text-green-600" />
+            Provisions-Einstellungen
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Setze ein monatliches Provisionsziel. Es wird als Fortschrittsbalken auf der Provisionen-Seite angezeigt.
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="quota-input">Monatliches Provisionsziel (€)</Label>
+            <div className="flex gap-2">
+              <Input
+                id="quota-input"
+                value={quotaInput}
+                onChange={(e) => setQuotaInput(e.target.value)}
+                placeholder="z.B. 5000"
+                type="number"
+                min="0"
+                step="100"
+                className="max-w-xs"
+              />
+              <Button
+                size="sm"
+                className="min-h-[40px]"
+                onClick={() => {
+                  const val = parseFloat(quotaInput);
+                  if (isNaN(val) || val < 0) return;
+                  updateSettings.mutate({ monthlyCommissionQuota: val });
+                }}
+                disabled={updateSettings.isPending || !quotaInput}
+              >
+                {updateSettings.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Speichern"}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Activity Templates */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <ListChecks className="w-4 h-4 text-primary" />
+            Aufgaben-Templates
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Erstelle wiederverwendbare Templates für häufige Aufgaben-Typen.
+          </p>
+
+          {actTemplates.length > 0 && (
+            <div className="space-y-2">
+              {actTemplates.map((t) => (
+                <div key={t.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/40 border border-border">
+                  <ListChecks className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{t.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{t.description}</p>
+                    <p className="text-[10px] text-muted-foreground mt-0.5">
+                      {t.type} · Priorität: {t.priority} · Wiederholung: {t.recurrence}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteActTemplate.mutate(t.id)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="space-y-3 pt-2 border-t border-border">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Neues Template</p>
+            <div className="space-y-1.5">
+              <Label htmlFor="act-tpl-name">Name</Label>
+              <Input
+                id="act-tpl-name"
+                value={actTemplateForm.name}
+                onChange={(e) => setActTemplateForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="z.B. Wöchentlicher Follow-up"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="act-tpl-desc">Beschreibung</Label>
+              <Input
+                id="act-tpl-desc"
+                value={actTemplateForm.description}
+                onChange={(e) => setActTemplateForm((f) => ({ ...f, description: e.target.value }))}
+                placeholder="Was ist zu tun?"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <div className="space-y-1.5">
+                <Label>Typ</Label>
+                <Select value={actTemplateForm.type} onValueChange={(v) => setActTemplateForm((f) => ({ ...f, type: v }))}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="call">Anruf</SelectItem>
+                    <SelectItem value="demo">Demo</SelectItem>
+                    <SelectItem value="proposal">Angebot</SelectItem>
+                    <SelectItem value="follow_up">Follow-up</SelectItem>
+                    <SelectItem value="meeting">Meeting</SelectItem>
+                    <SelectItem value="email">E-Mail</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Priorität</Label>
+                <Select value={actTemplateForm.priority} onValueChange={(v) => setActTemplateForm((f) => ({ ...f, priority: v }))}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="high">Hoch</SelectItem>
+                    <SelectItem value="medium">Mittel</SelectItem>
+                    <SelectItem value="low">Niedrig</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Wiederholung</Label>
+                <Select value={actTemplateForm.recurrence} onValueChange={(v) => setActTemplateForm((f) => ({ ...f, recurrence: v }))}>
+                  <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Keine</SelectItem>
+                    <SelectItem value="daily">Täglich</SelectItem>
+                    <SelectItem value="weekly">Wöchentlich</SelectItem>
+                    <SelectItem value="monthly">Monatlich</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <Button
+              size="sm"
+              className="gap-2 min-h-[40px]"
+              onClick={() => {
+                if (!actTemplateForm.name.trim() || !actTemplateForm.description.trim()) return;
+                createActTemplate.mutate(actTemplateForm);
+              }}
+              disabled={createActTemplate.isPending || !actTemplateForm.name.trim() || !actTemplateForm.description.trim()}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Template erstellen
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* System Info */}
       <Card>
         <CardHeader className="pb-3">
@@ -360,7 +634,7 @@ export default function SettingsPage() {
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="bg-muted/40 rounded-md px-3 py-2">
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">Berater</p>
-              <p className="font-semibold">Lars Herzer</p>
+              <p className="font-semibold">{appSettings?.advisorName ?? "Lars Herzer"}</p>
             </div>
             <div className="bg-muted/40 rounded-md px-3 py-2">
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground mb-0.5">System</p>

@@ -11,8 +11,11 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
   Download, Upload, Search, GitMerge, FileText, CheckCircle2, AlertCircle,
-  Loader2, RefreshCw,
+  Loader2, RefreshCw, Eye,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Customer } from "@shared/schema";
@@ -53,6 +56,9 @@ export default function DataManagementPage() {
 
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importLoading, setImportLoading] = useState(false);
+  const [previewData, setPreviewData] = useState<{ headers: string[]; previewRows: string[][]; totalRows: number } | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
   const [duplicates, setDuplicates] = useState<DuplicateGroup[] | null>(null);
   const [dupLoading, setDupLoading] = useState(false);
   const [mergeDialog, setMergeDialog] = useState<{ keepId: number; mergeId: number; keepName: string; mergeName: string } | null>(null);
@@ -66,10 +72,32 @@ export default function DataManagementPage() {
     a.click();
   };
 
+  // CSV Preview
+  const handlePreview = async (file: File) => {
+    setPreviewLoading(true);
+    setPreviewData(null);
+    setPendingFile(file);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`${API_BASE}/api/import/csv/preview`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Vorschau fehlgeschlagen");
+      setPreviewData(data);
+    } catch (err: any) {
+      toast({ title: "Vorschau fehlgeschlagen", description: err.message, variant: "destructive" });
+      setPendingFile(null);
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   // CSV Import
   const handleImport = async (file: File) => {
     setImportLoading(true);
     setImportResult(null);
+    setPreviewData(null);
+    setPendingFile(null);
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -192,19 +220,85 @@ export default function DataManagementPage() {
             type="file"
             accept=".csv"
             className="hidden"
-            onChange={(e) => e.target.files?.[0] && handleImport(e.target.files[0])}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handlePreview(file);
+              // Reset input so same file can be re-selected
+              e.target.value = "";
+            }}
           />
           <Button
             className="gap-2 min-h-[44px]"
             onClick={() => csvInputRef.current?.click()}
-            disabled={importLoading}
+            disabled={importLoading || previewLoading}
           >
-            {importLoading ? (
+            {previewLoading ? (
+              <><Loader2 className="w-4 h-4 animate-spin" /> Lade Vorschau…</>
+            ) : importLoading ? (
               <><Loader2 className="w-4 h-4 animate-spin" /> Importiere…</>
             ) : (
               <><Upload className="w-4 h-4" /> CSV-Datei wählen</>
             )}
           </Button>
+
+          {/* Preview */}
+          {previewData && (
+            <div className="space-y-3 mt-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Eye className="w-4 h-4 text-primary" />
+                  <p className="text-sm font-semibold text-foreground">
+                    Vorschau: {previewData.totalRows} Zeilen erkannt
+                  </p>
+                </div>
+                <div className="flex gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setPreviewData(null); setPendingFile(null); }}
+                  >
+                    Abbrechen
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => pendingFile && handleImport(pendingFile)}
+                    disabled={importLoading}
+                  >
+                    {importLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : "Importieren"}
+                  </Button>
+                </div>
+              </div>
+              <div className="rounded-lg border border-border overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-muted/40 border-b border-border">
+                      {previewData.headers.map((h, i) => (
+                        <th key={i} className="text-left px-3 py-2 font-bold text-muted-foreground uppercase tracking-wide whitespace-nowrap">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewData.previewRows.map((row, ri) => (
+                      <tr key={ri} className="border-b border-border/50 hover:bg-muted/30">
+                        {row.map((cell, ci) => (
+                          <td key={ci} className="px-3 py-2 text-foreground max-w-[150px] truncate">
+                            {cell}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {previewData.totalRows > 5 && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Zeige 5 von {previewData.totalRows} Zeilen
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Import Results */}
           {importResult && (

@@ -9,9 +9,11 @@ import {
 import { Button } from "@/components/ui/button";
 import type { Activity as ActivityType } from "@shared/schema";
 import GlobalSearch from "./GlobalSearch";
+import { checkOverdueTasks } from "@/lib/notifications";
 
 interface AppSettings {
   crmName: string;
+  advisorName?: string;
 }
 
 const navItems = [
@@ -68,9 +70,27 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   // CRM name from settings
   const { data: appSettings } = useQuery<AppSettings>({ queryKey: ["/api/settings"] });
   const crmName = appSettings?.crmName ?? "CGP CRM";
+  const advisorName = appSettings?.advisorName ?? "Lars Herzer";
+  const advisorInitials = advisorName.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
 
   // Badge: überfällige Aufgaben
   const { data: activities = [] } = useQuery<ActivityType[]>({ queryKey: ["/api/activities"] });
+
+  // Check overdue tasks and send notifications if enabled
+  useEffect(() => {
+    const enabled = localStorage.getItem("notificationsEnabled") === "true";
+    if (activities.length > 0) {
+      checkOverdueTasks(
+        activities.filter((a) => !a.done).map((a) => ({
+          id: a.id,
+          description: a.description,
+          dueDate: a.dueDate ?? "",
+          dueTime: a.dueTime,
+        })),
+        enabled,
+      );
+    }
+  }, [activities]);
   const today = new Date(); today.setHours(0, 0, 0, 0);
   const overdueCount = activities.filter((a) => {
     if (a.done || !a.dueDate) return false;
@@ -173,10 +193,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="px-4 py-3 border-t border-border bg-muted/30">
           <div className="flex items-center gap-2.5">
             <div className="w-7 h-7 rounded-full bg-primary flex items-center justify-center shrink-0">
-              <span className="text-[11px] font-bold text-primary-foreground">LH</span>
+              <span className="text-[11px] font-bold text-primary-foreground">{advisorInitials}</span>
             </div>
             <div className="min-w-0 flex-1">
-              <p className="text-[12px] font-semibold text-foreground truncate">Lars Herzer</p>
+              <p className="text-[12px] font-semibold text-foreground truncate">{advisorName}</p>
               <div className="flex items-center gap-1.5">
                 <div className="w-1.5 h-1.5 rounded-full bg-green-500 shrink-0" />
                 <p className="text-[10px] text-muted-foreground">Berater · CGP</p>

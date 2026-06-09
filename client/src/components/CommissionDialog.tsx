@@ -46,6 +46,8 @@ export default function CommissionDialog({
     date: new Date().toISOString().slice(0, 10),
     type: "sale",
     description: "",
+    volume: "",
+    disagio: "",
   });
 
   // Populate form when editing
@@ -57,6 +59,8 @@ export default function CommissionDialog({
         date: editCommission.date,
         type: editCommission.type,
         description: editCommission.description ?? "",
+        volume: "",
+        disagio: "",
       });
     } else {
       setForm({
@@ -65,6 +69,8 @@ export default function CommissionDialog({
         date: new Date().toISOString().slice(0, 10),
         type: "sale",
         description: "",
+        volume: "",
+        disagio: "",
       });
     }
   }, [editCommission, preselectedCustomerId, open]);
@@ -173,6 +179,54 @@ export default function CommissionDialog({
             </Select>
           </div>
 
+          {/* Volume + Disagio auto-calc */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="comm-volume">Volumen (€) <span className="text-muted-foreground font-normal text-xs">optional</span></Label>
+              <Input
+                id="comm-volume"
+                value={form.volume}
+                onChange={(e) => {
+                  const vol = e.target.value;
+                  setForm((f) => {
+                    const dis = parseFloat(f.disagio.replace(",", "."));
+                    const v = parseFloat(vol.replace(",", "."));
+                    const auto = !isNaN(v) && !isNaN(dis) && dis > 0
+                      ? String((v * dis / 100).toFixed(2))
+                      : f.amount;
+                    return { ...f, volume: vol, amount: auto };
+                  });
+                }}
+                placeholder="z.B. 50000"
+                type="number"
+                min="0"
+                step="0.01"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="comm-disagio">Disagio (%) <span className="text-muted-foreground font-normal text-xs">optional</span></Label>
+              <Input
+                id="comm-disagio"
+                value={form.disagio}
+                onChange={(e) => {
+                  const dis = e.target.value;
+                  setForm((f) => {
+                    const vol = parseFloat(f.volume.replace(",", "."));
+                    const d = parseFloat(dis.replace(",", "."));
+                    const auto = !isNaN(vol) && !isNaN(d) && d > 0
+                      ? String((vol * d / 100).toFixed(2))
+                      : f.amount;
+                    return { ...f, disagio: dis, amount: auto };
+                  });
+                }}
+                placeholder="z.B. 0.25"
+                type="number"
+                min="0"
+                step="0.01"
+              />
+            </div>
+          </div>
+
           {/* Amount */}
           <div className="space-y-1.5">
             <Label htmlFor="comm-amount">Betrag (€) *</Label>
@@ -189,6 +243,11 @@ export default function CommissionDialog({
                 step="0.01"
               />
             </div>
+            {form.volume && form.disagio && (
+              <p className="text-[11px] text-muted-foreground">
+                Auto-berechnet: {form.volume} € × {form.disagio}% = {form.amount} €
+              </p>
+            )}
           </div>
 
           {/* Date */}

@@ -54,7 +54,20 @@ const ACT_CLASS: Record<string, string> = {
 
 type DueDateFilter = "all" | "overdue" | "today" | "week";
 type StatusFilter = "open" | "done" | "all";
-type SortKey = "dueDate" | "customer" | "type";
+type SortKey = "dueDate" | "customer" | "type" | "priority";
+type PriorityFilter = "all" | "high" | "medium" | "low";
+
+const PRIORITY_LABELS: Record<string, string> = {
+  high: "Hoch",
+  medium: "Mittel",
+  low: "Niedrig",
+};
+
+const PRIORITY_CLASS: Record<string, string> = {
+  high: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300",
+  medium: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  low: "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300",
+};
 
 // ── Date helpers ──────────────────────────────────────────────────────────────
 
@@ -189,6 +202,16 @@ function TaskRow({
                 >
                   {ACT_TYPES[activity.type] ?? activity.type}
                 </span>
+                {(activity as any).priority && (activity as any).priority !== "medium" && (
+                  <span
+                    className={cn(
+                      "text-[9px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded-full shrink-0",
+                      PRIORITY_CLASS[(activity as any).priority] ?? "",
+                    )}
+                  >
+                    {PRIORITY_LABELS[(activity as any).priority] ?? (activity as any).priority}
+                  </span>
+                )}
                 {customer && (
                   <span className="text-[11px] text-muted-foreground font-semibold truncate max-w-[160px]">
                     {customer.companyName}
@@ -260,6 +283,7 @@ export default function TasksPage() {
   const [dueDateFilter, setDueDateFilter] = useState<DueDateFilter>("all");
   const [customerFilter, setCustomerFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [priorityFilter, setPriorityFilter] = useState<PriorityFilter>("all");
   const [searchQuery, setSearchQuery] = useState("");
   const [sortKey, setSortKey] = useState<SortKey>("dueDate");
 
@@ -324,6 +348,11 @@ export default function TasksPage() {
       list = list.filter((a) => a.type === typeFilter);
     }
 
+    // Priority
+    if (priorityFilter !== "all") {
+      list = list.filter((a) => ((a as any).priority ?? "medium") === priorityFilter);
+    }
+
     // Search
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
@@ -335,9 +364,26 @@ export default function TasksPage() {
       );
     }
 
-    // Sort
+    // Sort: priority order high > medium > low
+    const PRIORITY_ORDER: Record<string, number> = { high: 0, medium: 1, low: 2 };
     list.sort((a, b) => {
+      if (sortKey === "priority") {
+        const pa = PRIORITY_ORDER[((a as any).priority ?? "medium")] ?? 1;
+        const pb = PRIORITY_ORDER[((b as any).priority ?? "medium")] ?? 1;
+        if (pa !== pb) return pa - pb;
+        // Secondary: overdue first
+        const ga = getDueDateGroup(a.dueDate);
+        const gb = getDueDateGroup(b.dueDate);
+        const GROUP_ORDER: Record<string, number> = { overdue: 0, today: 1, week: 2, later: 3, none: 4 };
+        return (GROUP_ORDER[ga] ?? 4) - (GROUP_ORDER[gb] ?? 4);
+      }
       if (sortKey === "dueDate") {
+        // Overdue first, then by date
+        const ga = getDueDateGroup(a.dueDate);
+        const gb = getDueDateGroup(b.dueDate);
+        const GROUP_ORDER: Record<string, number> = { overdue: 0, today: 1, week: 2, later: 3, none: 4 };
+        const go = (GROUP_ORDER[ga] ?? 4) - (GROUP_ORDER[gb] ?? 4);
+        if (go !== 0) return go;
         if (!a.dueDate && !b.dueDate) return 0;
         if (!a.dueDate) return 1;
         if (!b.dueDate) return -1;
@@ -364,6 +410,7 @@ export default function TasksPage() {
     dueDateFilter,
     customerFilter,
     typeFilter,
+    priorityFilter,
     searchQuery,
     sortKey,
     custMap,
@@ -380,6 +427,7 @@ export default function TasksPage() {
     dueDateFilter !== "all" ||
     customerFilter !== "all" ||
     typeFilter !== "all" ||
+    priorityFilter !== "all" ||
     searchQuery.trim() !== "";
 
   function resetFilters() {
@@ -387,6 +435,7 @@ export default function TasksPage() {
     setDueDateFilter("all");
     setCustomerFilter("all");
     setTypeFilter("all");
+    setPriorityFilter("all");
     setSearchQuery("");
     setSortKey("dueDate");
   }
@@ -507,6 +556,22 @@ export default function TasksPage() {
             </SelectContent>
           </Select>
 
+          {/* Priority */}
+          <Select
+            value={priorityFilter}
+            onValueChange={(v) => setPriorityFilter(v as PriorityFilter)}
+          >
+            <SelectTrigger className="w-[130px] h-8 text-xs">
+              <SelectValue placeholder="Priorität" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle Prioritäten</SelectItem>
+              <SelectItem value="high">🔴 Hoch</SelectItem>
+              <SelectItem value="medium">🟡 Mittel</SelectItem>
+              <SelectItem value="low">🟢 Niedrig</SelectItem>
+            </SelectContent>
+          </Select>
+
           {/* Sort */}
           <Select
             value={sortKey}
@@ -517,6 +582,7 @@ export default function TasksPage() {
             </SelectTrigger>
             <SelectContent>
               <SelectItem value="dueDate">Nach Fälligkeit</SelectItem>
+              <SelectItem value="priority">Nach Priorität</SelectItem>
               <SelectItem value="customer">Nach Kunde</SelectItem>
               <SelectItem value="type">Nach Typ</SelectItem>
             </SelectContent>
