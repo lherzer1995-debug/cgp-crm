@@ -9,6 +9,7 @@ import CustomersPage from "@/pages/CustomersPage";
 import CustomerDetailPage from "@/pages/CustomerDetailPage";
 import DashboardPage from "@/pages/DashboardPage";
 import ActivitiesPage from "@/pages/ActivitiesPage";
+import TasksPage from "@/pages/TasksPage";
 import SettingsPage from "@/pages/SettingsPage";
 import AnalyticsPage from "@/pages/Analytics";
 import DataManagementPage from "@/pages/DataManagement";
@@ -163,6 +164,7 @@ function CRMApp() {
           <Route path="/" component={DashboardPage} />
           <Route path="/customers" component={CustomersPage} />
           <Route path="/customers/:id" component={CustomerDetailPage} />
+          <Route path="/tasks" component={TasksPage} />
           <Route path="/activities" component={ActivitiesPage} />
           <Route path="/analytics" component={AnalyticsPage} />
           <Route path="/data-management" component={DataManagementPage} />
