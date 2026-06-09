@@ -2,13 +2,14 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import {
-  customers, notes, activities, attachments, noteTemplates, settings,
+  customers, notes, activities, attachments, noteTemplates, settings, commissions,
   type Customer, type InsertCustomer,
   type Note, type InsertNote,
   type Activity, type InsertActivity,
   type Attachment, type InsertAttachment,
   type NoteTemplate, type InsertNoteTemplate,
   type Settings, type InsertSettings,
+  type Commission, type InsertCommission,
 } from "@shared/schema";
 
 // On Render: use persistent disk at /data/data.db, otherwise local data.db
@@ -92,6 +93,16 @@ sqlite.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE TABLE IF NOT EXISTS commissions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER NOT NULL,
+    amount REAL NOT NULL,
+    date TEXT NOT NULL,
+    description TEXT,
+    type TEXT NOT NULL DEFAULT 'sale',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // Run migrations for existing databases (ALTER TABLE IF NOT EXISTS column)
@@ -134,6 +145,13 @@ export interface IStorage {
   // Settings
   getSettings(): Settings;
   updateSettings(data: Partial<InsertSettings>): Settings;
+  // Commissions
+  getCommissions(filters?: { customerId?: number; year?: number; month?: number }): Commission[];
+  getCommission(id: number): Commission | undefined;
+  createCommission(data: InsertCommission): Commission;
+  updateCommission(id: number, data: Partial<InsertCommission>): Commission | undefined;
+  deleteCommission(id: number): void;
+  getCommissionSummary(year: number): { month: number; monthLabel: string; total: number; count: number }[];
 }
 
 class Storage implements IStorage {
@@ -238,6 +256,60 @@ class Storage implements IStorage {
       .where(eq(settings.id, existing.id))
       .returning()
       .get();
+  }
+
+  // ── Commissions ──────────────────────────────────────────────────────────
+  getCommissions(filters?: { customerId?: number; year?: number; month?: number }): Commission[] {
+    let all = db.select().from(commissions).all();
+    if (filters?.customerId != null) {
+      all = all.filter((c) => c.customerId === filters.customerId);
+    }
+    if (filters?.year != null) {
+      const y = String(filters.year);
+      all = all.filter((c) => c.date.startsWith(y));
+    }
+    if (filters?.month != null) {
+      const m = String(filters.month).padStart(2, "0");
+      all = all.filter((c) => {
+        const parts = c.date.split("-");
+        return parts[1] === m;
+      });
+    }
+    return all.sort((a, b) => (b.date > a.date ? 1 : -1));
+  }
+  getCommission(id: number): Commission | undefined {
+    return db.select().from(commissions).where(eq(commissions.id, id)).get();
+  }
+  createCommission(data: InsertCommission): Commission {
+    return db.insert(commissions).values(data).returning().get();
+  }
+  updateCommission(id: number, data: Partial<InsertCommission>): Commission | undefined {
+    return db
+      .update(commissions)
+      .set({ ...data, updatedAt: new Date().toISOString() })
+      .where(eq(commissions.id, id))
+      .returning()
+      .get();
+  }
+  deleteCommission(id: number): void {
+    db.delete(commissions).where(eq(commissions.id, id)).run();
+  }
+  getCommissionSummary(year: number): { month: number; monthLabel: string; total: number; count: number }[] {
+    const all = this.getCommissions({ year });
+    const MONTH_LABELS = ["Januar", "Februar", "März", "April", "Mai", "Juni",
+      "Juli", "August", "September", "Oktober", "November", "Dezember"];
+    const result: { month: number; monthLabel: string; total: number; count: number }[] = [];
+    for (let m = 1; m <= 12; m++) {
+      const key = String(m).padStart(2, "0");
+      const monthItems = all.filter((c) => c.date.split("-")[1] === key);
+      result.push({
+        month: m,
+        monthLabel: MONTH_LABELS[m - 1],
+        total: monthItems.reduce((sum, c) => sum + c.amount, 0),
+        count: monthItems.length,
+      });
+    }
+    return result;
   }
 }
 

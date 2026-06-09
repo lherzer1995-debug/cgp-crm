@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage, db } from "./storage";
-import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema, updateSettingsSchema } from "@shared/schema";
+import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema, updateSettingsSchema, insertCommissionSchema } from "@shared/schema";
 import { customers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import multer from "multer";
@@ -497,6 +497,58 @@ export function registerRoutes(httpServer: Server, app: Express) {
     if (!result.success) return res.status(400).json({ message: result.error.message });
     const updated = storage.updateSettings(result.data);
     res.json(updated);
+  });
+
+  // ── Commissions ───────────────────────────────────────────────────────────
+  app.get("/api/commissions", (req, res) => {
+    const customerId = req.query.customerId ? Number(req.query.customerId) : undefined;
+    const year = req.query.year ? Number(req.query.year) : undefined;
+    const month = req.query.month ? Number(req.query.month) : undefined;
+    const list = storage.getCommissions({ customerId, year, month });
+    // Enrich with customer name
+    const customers = storage.getCustomers();
+    const customerMap = new Map(customers.map((c) => [c.id, c]));
+    const enriched = list.map((c) => ({
+      ...c,
+      customerName: customerMap.get(c.customerId)?.companyName ?? "Unbekannt",
+    }));
+    res.json(enriched);
+  });
+
+  app.get("/api/commissions/summary", (req, res) => {
+    const year = req.query.year ? Number(req.query.year) : new Date().getFullYear();
+    const summary = storage.getCommissionSummary(year);
+    const totalYear = summary.reduce((s, m) => s + m.total, 0);
+    res.json({ year, summary, totalYear });
+  });
+
+  app.get("/api/customers/:id/commissions", (req, res) => {
+    const customerId = Number(req.params.id);
+    const list = storage.getCommissions({ customerId });
+    const total = list.reduce((s, c) => s + c.amount, 0);
+    res.json({ commissions: list, total });
+  });
+
+  app.post("/api/commissions", (req, res) => {
+    const result = insertCommissionSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ message: result.error.message });
+    const commission = storage.createCommission(result.data);
+    res.status(201).json(commission);
+  });
+
+  app.patch("/api/commissions/:id", (req, res) => {
+    const partial = insertCommissionSchema.partial().safeParse(req.body);
+    if (!partial.success) return res.status(400).json({ message: partial.error.message });
+    const commission = storage.updateCommission(Number(req.params.id), partial.data);
+    if (!commission) return res.status(404).json({ message: "Provision nicht gefunden" });
+    res.json(commission);
+  });
+
+  app.delete("/api/commissions/:id", (req, res) => {
+    const commission = storage.getCommission(Number(req.params.id));
+    if (!commission) return res.status(404).json({ message: "Provision nicht gefunden" });
+    storage.deleteCommission(Number(req.params.id));
+    res.status(204).end();
   });
 
   // ── Analytics ─────────────────────────────────────────────────────────────

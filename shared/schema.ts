@@ -116,6 +116,26 @@ export const updateSettingsSchema = insertSettingsSchema.partial();
 export type InsertSettings = z.infer<typeof insertSettingsSchema>;
 export type Settings = typeof settings.$inferSelect;
 
+// ── Commissions ────────────────────────────────────────────────────────────
+export const commissions = sqliteTable("commissions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id").notNull(),
+  amount: real("amount").notNull(), // Provision in €
+  date: text("date").notNull(), // ISO date: YYYY-MM-DD
+  description: text("description"), // z.B. "Abschluss Demo-Paket"
+  type: text("type").notNull().default("sale"), // sale | renewal | upsell | other
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const insertCommissionSchema = createInsertSchema(commissions).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertCommission = z.infer<typeof insertCommissionSchema>;
+export type Commission = typeof commissions.$inferSelect;
+
 // ── Activities (Pipeline Events) ───────────────────────────────────────────
 export const activities = sqliteTable("activities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
