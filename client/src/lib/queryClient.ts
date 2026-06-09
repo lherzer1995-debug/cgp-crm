@@ -6,10 +6,22 @@ export const API_BASE = (typeof window !== "undefined" && window.location.hostna
   ? "/port/5000"
   : ("__PORT_5000__".startsWith("__") ? "" : "__PORT_5000__");
 
+/** Maps HTTP status codes to user-friendly German messages. */
+function friendlyErrorMessage(status: number, fallback: string): string {
+  if (status === 0 || fallback.toLowerCase().includes("failed to fetch")) {
+    return "Verbindung unterbrochen. Bitte Internetverbindung prüfen.";
+  }
+  if (status === 401) return "Sitzung abgelaufen. Bitte Seite neu laden.";
+  if (status === 403) return "Keine Berechtigung für diese Aktion.";
+  if (status === 404) return "Die angeforderten Daten wurden nicht gefunden.";
+  if (status >= 500) return "Serverfehler. Bitte versuche es später erneut.";
+  return "Daten konnten nicht geladen werden. Bitte versuche es später erneut.";
+}
+
 async function throwIfResNotOk(res: Response) {
   if (!res.ok) {
     const text = (await res.text()) || res.statusText;
-    throw new Error(`${res.status}: ${text}`);
+    throw new Error(friendlyErrorMessage(res.status, text));
   }
 }
 
@@ -18,11 +30,16 @@ export async function apiRequest(
   url: string,
   data?: unknown | undefined,
 ): Promise<Response> {
-  const res = await fetch(`${API_BASE}${url}`, {
-    method,
-    headers: data ? { "Content-Type": "application/json" } : {},
-    body: data ? JSON.stringify(data) : undefined,
-  });
+  let res: Response;
+  try {
+    res = await fetch(`${API_BASE}${url}`, {
+      method,
+      headers: data ? { "Content-Type": "application/json" } : {},
+      body: data ? JSON.stringify(data) : undefined,
+    });
+  } catch (err: any) {
+    throw new Error("Verbindung unterbrochen. Bitte Internetverbindung prüfen.");
+  }
 
   await throwIfResNotOk(res);
   return res;
@@ -34,7 +51,12 @@ export const getQueryFn: <T>(options: {
 }) => QueryFunction<T> =
   ({ on401: unauthorizedBehavior }) =>
   async ({ queryKey }) => {
-    const res = await fetch(`${API_BASE}${queryKey.join("/")}`);
+    let res: Response;
+    try {
+      res = await fetch(`${API_BASE}${queryKey.join("/")}`);
+    } catch {
+      throw new Error("Verbindung unterbrochen. Bitte Internetverbindung prüfen.");
+    }
 
     if (unauthorizedBehavior === "returnNull" && res.status === 401) {
       return null;
@@ -50,8 +72,9 @@ export const queryClient = new QueryClient({
       queryFn: getQueryFn({ on401: "throw" }),
       refetchInterval: false,
       refetchOnWindowFocus: false,
-      staleTime: Infinity,
-      retry: false,
+      staleTime: 5 * 60 * 1000, // 5 minutes
+      retry: 3,
+      retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 30000),
     },
     mutations: {
       retry: false,

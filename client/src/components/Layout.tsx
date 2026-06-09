@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, Users, Activity, Menu, X, Sun, Moon, Settings, CalendarClock, Search,
-  BarChart2, Database,
+  BarChart2, Database, ListChecks,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Activity as ActivityType } from "@shared/schema";
@@ -17,7 +17,8 @@ interface AppSettings {
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/customers", label: "Kunden", icon: Users },
-  { href: "/activities", label: "Aufgaben", icon: Activity },
+  { href: "/tasks", label: "Aufgaben", icon: ListChecks },
+  { href: "/activities", label: "Aktivitäten", icon: Activity },
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
   { href: "/data-management", label: "Daten", icon: Database },
   { href: "/settings", label: "Einstellungen", icon: Settings },
@@ -118,7 +119,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto" role="navigation">
           {navItems.map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? location === "/" : location.startsWith(href);
-            const badge = href === "/activities" && openCount > 0 ? openCount : null;
+            const badge = href === "/tasks" && openCount > 0 ? openCount : null;
             return (
               <Link key={href} href={href}>
                 <a
