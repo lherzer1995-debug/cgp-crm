@@ -31,7 +31,6 @@ sqlite.exec(`
     city TEXT,
     country TEXT DEFAULT 'Deutschland',
     industry TEXT,
-    status TEXT NOT NULL DEFAULT 'lead',
     payment_volume REAL,
     payment_method TEXT,
     bank_name TEXT,

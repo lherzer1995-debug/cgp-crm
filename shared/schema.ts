@@ -12,7 +12,6 @@ export const customers = sqliteTable("customers", {
   city: text("city"),
   country: text("country").default("Deutschland"),
   industry: text("industry"),
-  status: text("status").notNull().default("lead"), // lead | prospect | active | churned
   // Payment / Commerzbank specific
   paymentVolume: real("payment_volume"), // monthly EUR
   paymentMethod: text("payment_method"), // card | sepa | instant
@@ -160,7 +159,7 @@ export type ActivityTemplate = typeof activityTemplates.$inferSelect;
 export const activities = sqliteTable("activities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   customerId: integer("customer_id").notNull(),
-  type: text("type").notNull(), // call | demo | proposal | follow_up | closed_won | closed_lost
+  type: text("type").notNull(), // call | follow_up | meeting | email
   description: text("description").notNull(),
   priority: text("priority").notNull().default("medium"), // low | medium | high
   dueDate: text("due_date"),          // ISO date string (YYYY-MM-DD or full ISO)

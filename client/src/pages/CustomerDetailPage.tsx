@@ -4,7 +4,6 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest, API_BASE } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -30,22 +29,14 @@ import type { Customer, Note, Activity, InsertNote, InsertActivity, NoteTemplate
 import NoteEditor from "@/components/NoteEditor";
 import CommissionDialog from "@/components/CommissionDialog";
 
-const STATUS_LABEL: Record<string, string> = {
-  lead: "Lead", prospect: "Prospect", active: "Aktiv", churned: "Abgewandert",
-};
-const STATUS_CLASS: Record<string, string> = {
-  lead: "badge-lead", prospect: "badge-prospect", active: "badge-active", churned: "badge-churned",
-};
 const NOTE_TYPES: Record<string, string> = {
   note: "Notiz", call: "Anruf", meeting: "Meeting", email: "E-Mail",
 };
 const ACT_TYPES: Record<string, string> = {
-  call: "Anruf", demo: "Demo", proposal: "Angebot", follow_up: "Follow-up",
-  meeting: "Meeting", email: "E-Mail", closed_won: "Abschluss ✓", closed_lost: "Verloren",
+  call: "Anruf", follow_up: "Follow-up", meeting: "Meeting", email: "E-Mail",
 };
 const ACT_CLASS: Record<string, string> = {
-  call: "act-call", demo: "act-demo", proposal: "act-proposal",
-  follow_up: "act-follow_up", closed_won: "act-closed_won", closed_lost: "act-closed_lost",
+  call: "act-call", follow_up: "act-follow_up",
   meeting: "text-indigo-600 dark:text-indigo-400", email: "text-cyan-600 dark:text-cyan-400",
 };
 
@@ -225,9 +216,6 @@ export default function CustomerDetailPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-start gap-3 flex-wrap">
                 <h1 className="text-xl font-bold text-foreground">{customer.companyName}</h1>
-                <Badge variant="secondary" className={cn("border-0 font-semibold", STATUS_CLASS[customer.status])}>
-                  {STATUS_LABEL[customer.status]}
-                </Badge>
               </div>
               <p className="text-sm text-muted-foreground mt-1">{customer.contactName}</p>
               {customer.industry && (

@@ -577,8 +577,6 @@ export default function SettingsPage() {
                   <SelectTrigger className="h-9 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="call">Anruf</SelectItem>
-                    <SelectItem value="demo">Demo</SelectItem>
-                    <SelectItem value="proposal">Angebot</SelectItem>
                     <SelectItem value="follow_up">Follow-up</SelectItem>
                     <SelectItem value="meeting">Meeting</SelectItem>
                     <SelectItem value="email">E-Mail</SelectItem>
