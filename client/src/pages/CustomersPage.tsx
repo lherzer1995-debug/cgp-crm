@@ -18,9 +18,11 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Plus, Search, Pencil, Trash2, ExternalLink, Euro, Users, Building2, Upload, FileText, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Plus, Search, Pencil, Trash2, ExternalLink, Euro, Users, Building2, Upload, FileText, Loader2, CheckCircle2, AlertCircle, Route, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Customer, InsertCustomer } from "@shared/schema";
+import { getRiskBadgeClass, getRiskInfo } from "@/lib/riskScoring";
+import { RouteOptimizationDialog } from "@/components/RouteOptimizationDialog";
 
 const INDUSTRIES = [
   "Einzelhandel", "Gastronomie", "E-Commerce", "Dienstleistung",
@@ -488,6 +490,9 @@ export default function CustomersPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
+  const [routeDialogOpen, setRouteDialogOpen] = useState(false);
+  const [riskFilter, setRiskFilter] = useState<"all" | "risk">("all");
+  const [sortBy, setSortBy] = useState<"default" | "risk">("default");
 
   const { data: customers = [], isLoading } = useQuery<Customer[]>({
     queryKey: ["/api/customers"],
@@ -524,15 +529,24 @@ export default function CustomersPage() {
     },
   });
 
-  const filtered = customers.filter((c) => {
+  let filtered = customers.filter((c) => {
     const q = search.toLowerCase();
-    return (
+    const matchesSearch = (
       c.companyName.toLowerCase().includes(q) ||
       c.contactName.toLowerCase().includes(q) ||
       (c.city ?? "").toLowerCase().includes(q) ||
       (c.email ?? "").toLowerCase().includes(q)
     );
+    if (!matchesSearch) return false;
+    if (riskFilter === "risk") {
+      return (c.riskScore ?? 0) >= 31;
+    }
+    return true;
   });
+
+  if (sortBy === "risk") {
+    filtered = [...filtered].sort((a, b) => (b.riskScore ?? 0) - (a.riskScore ?? 0));
+  }
 
   const handleSave = (data: Partial<InsertCustomer>) => {
     if (!data.companyName?.trim() || !data.contactName?.trim()) {
@@ -555,13 +569,22 @@ export default function CustomersPage() {
             <p className="text-sm text-muted-foreground">{customers.length} Einträge gesamt</p>
           </div>
         </div>
-        <Button
-          onClick={() => { setEditing(null); setDialogOpen(true); }}
-          data-testid="button-add-customer"
-          className="gap-2 shrink-0"
-        >
-          <Plus className="w-4 h-4" /> Neuer Kunde
-        </Button>
+        <div className="flex items-center gap-2 shrink-0">
+          <Button
+            variant="outline"
+            onClick={() => setRouteDialogOpen(true)}
+            className="gap-2 hidden sm:flex"
+          >
+            <Route className="w-4 h-4" /> Tagesroute
+          </Button>
+          <Button
+            onClick={() => { setEditing(null); setDialogOpen(true); }}
+            data-testid="button-add-customer"
+            className="gap-2"
+          >
+            <Plus className="w-4 h-4" /> Neuer Kunde
+          </Button>
+        </div>
       </div>
 
       {/* Filters */}
@@ -575,6 +598,31 @@ export default function CustomersPage() {
             onChange={(e) => setSearch(e.target.value)}
             data-testid="input-search"
           />
+        </div>
+        <div className="flex gap-2">
+          <Select value={riskFilter} onValueChange={(v) => setRiskFilter(v as "all" | "risk")}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Alle Kunden</SelectItem>
+              <SelectItem value="risk">
+                <span className="flex items-center gap-1.5">
+                  <ShieldAlert className="w-3.5 h-3.5 text-amber-500" />
+                  Nur Risiko-Kunden
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+          <Select value={sortBy} onValueChange={(v) => setSortBy(v as "default" | "risk")}>
+            <SelectTrigger className="w-40">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="default">Standard</SelectItem>
+              <SelectItem value="risk">Nach Risk-Score</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
@@ -596,7 +644,7 @@ export default function CustomersPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
-                    {["Firma", "Kontakt", "Stadt", "Volumen / Mon.", ""].map((h) => (
+                    {["Firma", "Kontakt", "Stadt", "Volumen / Mon.", "Risiko", ""].map((h) => (
                       <th
                         key={h}
                         className={cn(
@@ -604,6 +652,7 @@ export default function CustomersPage() {
                           h === "Stadt" && "hidden lg:table-cell",
                           h === "Volumen / Mon." && "hidden lg:table-cell",
                           h === "Kontakt" && "hidden md:table-cell",
+                          h === "Risiko" && "hidden xl:table-cell",
                         )}
                       >
                         {h}
@@ -642,6 +691,22 @@ export default function CustomersPage() {
                             € {c.paymentVolume.toLocaleString("de-DE")}
                           </span>
                         ) : <span className="text-muted-foreground">—</span>}
+                      </td>
+                      <td className="px-4 py-3 hidden xl:table-cell">
+                        {c.riskScore != null ? (
+                          <span className={cn(
+                            "inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold",
+                            getRiskBadgeClass(c.riskScore)
+                          )}>
+                            <span
+                              className="w-1.5 h-1.5 rounded-full shrink-0"
+                              style={{ backgroundColor: getRiskInfo(c.riskScore).color }}
+                            />
+                            {c.riskScore}
+                          </span>
+                        ) : (
+                          <span className="text-muted-foreground text-xs">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 justify-end">
@@ -694,6 +759,12 @@ export default function CustomersPage() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Route Optimization Dialog */}
+      <RouteOptimizationDialog
+        open={routeDialogOpen}
+        onOpenChange={setRouteDialogOpen}
+      />
 
       {/* Delete Confirm */}
       <AlertDialog open={deleteId !== null} onOpenChange={(o) => !o && setDeleteId(null)}>

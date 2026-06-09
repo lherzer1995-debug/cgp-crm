@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import {
-  customers, notes, activities, attachments, noteTemplates, settings, commissions, activityTemplates, reminders, supportTickets,
+  customers, notes, activities, attachments, noteTemplates, settings, commissions, activityTemplates, reminders, supportTickets, routes,
   type Customer, type InsertCustomer,
   type Note, type InsertNote,
   type Activity, type InsertActivity,
@@ -13,6 +13,7 @@ import {
   type ActivityTemplate, type InsertActivityTemplate,
   type Reminder, type InsertReminder,
   type SupportTicket, type InsertSupportTicket,
+  type Route, type InsertRoute,
 } from "@shared/schema";
 
 // On Render: use persistent disk at /data/data.db, otherwise local data.db
@@ -134,6 +135,18 @@ sqlite.exec(`
     updated_at TEXT NOT NULL DEFAULT (datetime('now')),
     resolved_at TEXT
   );
+  CREATE TABLE IF NOT EXISTS routes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    route_date TEXT NOT NULL,
+    start_location TEXT NOT NULL,
+    customer_ids TEXT NOT NULL,
+    optimized_order TEXT NOT NULL,
+    total_distance_km REAL,
+    estimated_duration_min INTEGER,
+    status TEXT NOT NULL DEFAULT 'planned',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // Run migrations for existing databases (ALTER TABLE IF NOT EXISTS column)
@@ -158,6 +171,9 @@ runMigration("ALTER TABLE customers ADD COLUMN cancellation_notice_days INTEGER"
 runMigration("ALTER TABLE customers ADD COLUMN terminals TEXT");
 // Phase 2B: support tickets table (already created above via CREATE TABLE IF NOT EXISTS)
 runMigration("ALTER TABLE support_tickets ADD COLUMN resolved_at TEXT");
+// Phase 3: Risk Scoring fields
+runMigration("ALTER TABLE customers ADD COLUMN risk_score INTEGER");
+runMigration("ALTER TABLE customers ADD COLUMN last_risk_assessment_date TEXT");
 
 export interface IStorage {
   // Customers
@@ -216,6 +232,12 @@ export interface IStorage {
   createSupportTicket(data: InsertSupportTicket): SupportTicket;
   updateSupportTicket(id: number, data: Partial<InsertSupportTicket>): SupportTicket | undefined;
   deleteSupportTicket(id: number): void;
+  // Routes
+  getRoutes(date?: string): Route[];
+  getRoute(id: number): Route | undefined;
+  createRoute(data: InsertRoute): Route;
+  updateRoute(id: number, data: Partial<InsertRoute>): Route | undefined;
+  deleteRoute(id: number): void;
 }
 
 class Storage implements IStorage {
@@ -450,6 +472,31 @@ class Storage implements IStorage {
   }
   deleteSupportTicket(id: number): void {
     db.delete(supportTickets).where(eq(supportTickets.id, id)).run();
+  }
+
+  // ── Routes ───────────────────────────────────────────────────────────────
+  getRoutes(date?: string): Route[] {
+    let all = db.select().from(routes).all();
+    if (date) {
+      all = all.filter((r) => r.routeDate === date);
+    }
+    return all.sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
+  }
+  getRoute(id: number): Route | undefined {
+    return db.select().from(routes).where(eq(routes.id, id)).get();
+  }
+  createRoute(data: InsertRoute): Route {
+    return db.insert(routes).values(data).returning().get();
+  }
+  updateRoute(id: number, data: Partial<InsertRoute>): Route | undefined {
+    return db.update(routes)
+      .set({ ...data, updatedAt: new Date().toISOString() })
+      .where(eq(routes.id, id))
+      .returning()
+      .get();
+  }
+  deleteRoute(id: number): void {
+    db.delete(routes).where(eq(routes.id, id)).run();
   }
 }
 
