@@ -105,7 +105,7 @@ export async function syncActivityToCalendar(activity: {
   description: string;
   dueDate: string;
   dueTime?: string | null;
-}, companyName: string): Promise<string> {
+}, companyName: string, contactName: string): Promise<string> {
   const typeLabel = ACT_TYPE_LABELS[activity.type] ?? activity.type;
   const timeStr = activity.dueTime ?? "09:00";
   const startISO = `${activity.dueDate}T${timeStr}:00+02:00`;
@@ -118,8 +118,8 @@ export async function syncActivityToCalendar(activity: {
 
 
   const event: GCalEvent = {
-    summary: `[CGP CRM] ${typeLabel}: ${companyName}`,
-    description: `${activity.description}\n\nKunde: ${companyName}\nTyp: ${typeLabel}`,
+    summary: `${companyName} - ${contactName} (${typeLabel})`,
+    description: activity.description,
     start: { dateTime: startISO, timeZone: "Europe/Berlin" },
     end: { dateTime: endISO, timeZone: "Europe/Berlin" },
   };
@@ -164,6 +164,7 @@ export async function syncAllActivitiesToCalendar(): Promise<void> {
     try {
       const customer = storage.getCustomer(activity.customerId);
       const companyName = customer?.companyName ?? "Kunde";
+      const contactName = customer?.contactName ?? "Kontakt";
 
       const eventId = await syncActivityToCalendar(
         {
@@ -173,7 +174,8 @@ export async function syncAllActivitiesToCalendar(): Promise<void> {
           dueDate: activity.dueDate!,
           dueTime: activity.dueTime,
         },
-        companyName
+        companyName,
+        contactName
       );
 
       storage.updateActivity(activity.id, { calendarEventId: eventId });
