@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage, db } from "./storage";
-import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema } from "@shared/schema";
+import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema, updateSettingsSchema } from "@shared/schema";
 import { customers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import multer from "multer";
@@ -483,11 +483,20 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // ── Settings ──────────────────────────────────────────────────────────────
   app.get("/api/settings", (_req, res) => {
     const token = getStoredToken();
+    const appSettings = storage.getSettings();
     res.json({
+      crmName: appSettings.crmName,
       gcalConfigured: gcalConfigured(),
       gcalConnected: gcalConfigured(),
       gcalEmail: token?.email ?? null,
     });
+  });
+
+  app.put("/api/settings", (req, res) => {
+    const result = updateSettingsSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ message: result.error.message });
+    const updated = storage.updateSettings(result.data);
+    res.json(updated);
   });
 
   // ── Analytics ─────────────────────────────────────────────────────────────

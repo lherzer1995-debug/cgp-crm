@@ -99,6 +99,23 @@ export const insertNoteTemplateSchema = createInsertSchema(noteTemplates).omit({
 export type InsertNoteTemplate = z.infer<typeof insertNoteTemplateSchema>;
 export type NoteTemplate = typeof noteTemplates.$inferSelect;
 
+// ── Settings ───────────────────────────────────────────────────────────────
+export const settings = sqliteTable("settings", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  crmName: text("crm_name").notNull().default("CGP CRM"),
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const insertSettingsSchema = createInsertSchema(settings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export const updateSettingsSchema = insertSettingsSchema.partial();
+export type InsertSettings = z.infer<typeof insertSettingsSchema>;
+export type Settings = typeof settings.$inferSelect;
+
 // ── Activities (Pipeline Events) ───────────────────────────────────────────
 export const activities = sqliteTable("activities", {
   id: integer("id").primaryKey({ autoIncrement: true }),
