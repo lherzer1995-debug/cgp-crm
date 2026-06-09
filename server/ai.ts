@@ -1,4 +1,5 @@
 import { storage } from "./storage";
+import type { InsertActivity } from "@shared/schema";
 
 /**
  * Calls OpenAI chat completions with a simple prompt.
@@ -86,4 +87,90 @@ Sei präzise und geschäftlich. Verwende keine Aufzählungszeichen.
 ${context}`;
 
   return callOpenAI(prompt, 300);
+}
+
+/**
+ * Generates a professional visit report from free-text notes.
+ */
+export async function generateVisitReport(customerId: number, visitNotes: string): Promise<string> {
+  const customer = storage.getCustomer(customerId);
+  const companyName = customer?.companyName ?? "Kunde";
+  const today = new Date().toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+  const prompt = `Erstelle einen professionellen Besuchsbericht für das Unternehmen "${companyName}" basierend auf diesen Notizen:
+
+${visitNotes}
+
+Format (strikt einhalten):
+Besuchsdatum: ${today}
+Unternehmen: ${companyName}
+
+Themen:
+- [Thema 1]
+- [Thema 2]
+
+Ergebnisse:
+- [Ergebnis 1]
+- [Ergebnis 2]
+
+Nächste Schritte:
+- [Schritt 1]
+- [Schritt 2]
+
+Sei präzise und professionell. Verwende Deutsch.`;
+
+  return callOpenAI(prompt, 600);
+}
+
+/**
+ * Extracts todos from a visit report and creates activities.
+ */
+export async function extractTodosFromReport(customerId: number, report: string): Promise<InsertActivity[]> {
+  const prompt = `Extrahiere alle "Nächste Schritte" aus diesem Besuchsbericht als JSON-Array.
+Gib NUR ein JSON-Array zurück, keine anderen Texte.
+Format: [{"description": "Aufgabenbeschreibung", "type": "follow_up", "priority": "medium"}]
+Mögliche Typen: call, follow_up, meeting, email
+Mögliche Prioritäten: low, medium, high
+
+Bericht:
+${report}`;
+
+  const raw = await callOpenAI(prompt, 400);
+
+  let todos: { description: string; type: string; priority: string }[] = [];
+  try {
+    // Extract JSON array from response
+    const match = raw.match(/\[[\s\S]*\]/);
+    if (match) {
+      todos = JSON.parse(match[0]);
+    }
+  } catch {
+    // Fallback: parse "Nächste Schritte" section line by line
+    const nextStepsSection = report.split(/Nächste Schritte:/i)[1] ?? "";
+    const steps = nextStepsSection.split("\n").filter((l) => l.trim().startsWith("-")).map((l) => l.replace(/^-\s*/, "").trim()).filter(Boolean);
+    todos = steps.map((s) => ({ description: s, type: "follow_up", priority: "medium" }));
+  }
+
+  const dueDate = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+  const created: InsertActivity[] = [];
+
+  for (const todo of todos.slice(0, 10)) {
+    if (!todo.description?.trim()) continue;
+    const activity = storage.createActivity({
+      customerId,
+      type: (todo.type as any) || "follow_up",
+      description: todo.description.trim(),
+      priority: (todo.priority as any) || "medium",
+      dueDate,
+      dueTime: null,
+      rawDateText: null,
+      calendarEventId: null,
+      done: false,
+      completedAt: null,
+      repeatDate: null,
+    });
+    created.push(activity as any);
+  }
+
+  return created;
 }

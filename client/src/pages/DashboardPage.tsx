@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Users, Euro, ArrowRight, Clock,
   CalendarClock, CheckCircle2, CheckSquare, Square, Building2, AlertCircle,
-  Bell, AlertTriangle, Check,
+  Bell, AlertTriangle, Check, TrendingUp, UserCheck, ListChecks,
 } from "lucide-react";
 import type { Customer, Activity, Reminder } from "@shared/schema";
 import { cn } from "@/lib/utils";
@@ -63,6 +63,16 @@ function dueDateLabel(dueDate: string, dueTime?: string | null): { label: string
 
 type EnrichedReminder = Reminder & { customerName: string };
 
+type TodayStats = {
+  openTasks: number;
+  overdueTasks: number;
+  todayTasks: number;
+  weekTasks: number;
+  todayReminders: number;
+  commissionsToday: number;
+  customersContactedToday: number;
+};
+
 export default function DashboardPage() {
   const { data: customers = [], isLoading: cLoad } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
   const { data: activities = [], isLoading: aLoad } = useQuery<Activity[]>({ queryKey: ["/api/activities"] });
@@ -72,6 +82,14 @@ export default function DashboardPage() {
       const r = await apiRequest("GET", "/api/reminders");
       return r.json();
     },
+  });
+  const { data: todayStats, isLoading: tLoad } = useQuery<TodayStats>({
+    queryKey: ["/api/dashboard/today"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/dashboard/today");
+      return r.json();
+    },
+    refetchInterval: 60_000, // refresh every minute
   });
 
   const custMap = Object.fromEntries(customers.map((c) => [c.id, c]));
@@ -140,6 +158,75 @@ export default function DashboardPage() {
         <StatCard label="Monatl. Volumen" value={`€ ${totalVol.toLocaleString("de-DE")}`}
           icon={Euro} accent="bg-primary" loading={cLoad} />
       </div>
+
+      {/* Tagescockpit KPIs */}
+      <Card className="overflow-hidden">
+        <div className="h-1 bg-[#FFD100]" />
+        <CardHeader className="pb-2 pt-4 px-4">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <ListChecks className="w-4 h-4 text-amber-500" />
+            Tagescockpit
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="flex flex-col p-3 rounded-lg bg-secondary/40 border border-border">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Heute fällig</span>
+              {tLoad ? <Skeleton className="h-6 w-12" /> : (
+                <span className="text-xl font-black text-foreground">{todayStats?.todayTasks ?? 0}</span>
+              )}
+              <span className="text-[10px] text-muted-foreground mt-0.5">Aufgaben</span>
+            </div>
+            <div className={cn("flex flex-col p-3 rounded-lg border", (todayStats?.overdueTasks ?? 0) > 0 ? "bg-destructive/5 border-destructive/30" : "bg-secondary/40 border-border")}>
+              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Überfällig</span>
+              {tLoad ? <Skeleton className="h-6 w-12" /> : (
+                <span className={cn("text-xl font-black", (todayStats?.overdueTasks ?? 0) > 0 ? "text-destructive" : "text-foreground")}>
+                  {todayStats?.overdueTasks ?? 0}
+                </span>
+              )}
+              <span className="text-[10px] text-muted-foreground mt-0.5">Aufgaben</span>
+            </div>
+            <div className="flex flex-col p-3 rounded-lg bg-secondary/40 border border-border">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Diese Woche</span>
+              {tLoad ? <Skeleton className="h-6 w-12" /> : (
+                <span className="text-xl font-black text-foreground">{todayStats?.weekTasks ?? 0}</span>
+              )}
+              <span className="text-[10px] text-muted-foreground mt-0.5">Aufgaben</span>
+            </div>
+            <div className="flex flex-col p-3 rounded-lg bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/40 dark:border-amber-800/30">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Wiedervorlagen</span>
+              {tLoad ? <Skeleton className="h-6 w-12" /> : (
+                <span className="text-xl font-black text-amber-600 dark:text-amber-400">{todayStats?.todayReminders ?? 0}</span>
+              )}
+              <span className="text-[10px] text-muted-foreground mt-0.5">Heute fällig</span>
+            </div>
+          </div>
+          {todayStats && (todayStats.commissionsToday > 0 || todayStats.customersContactedToday > 0) && (
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              {todayStats.commissionsToday > 0 && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-green-50/60 dark:bg-green-950/20 border border-green-200/40 dark:border-green-800/30">
+                  <TrendingUp className="w-4 h-4 text-green-600 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Provisionen heute</p>
+                    <p className="text-sm font-black text-green-600 dark:text-green-400">
+                      € {todayStats.commissionsToday.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                </div>
+              )}
+              {todayStats.customersContactedToday > 0 && (
+                <div className="flex items-center gap-3 p-3 rounded-lg bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/40 dark:border-blue-800/30">
+                  <UserCheck className="w-4 h-4 text-blue-600 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Kontaktiert heute</p>
+                    <p className="text-sm font-black text-blue-600 dark:text-blue-400">{todayStats.customersContactedToday} Kunden</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Tagescockpit Vorschau */}
       {(overdueReminders.length > 0 || todayReminders.length > 0) && (
