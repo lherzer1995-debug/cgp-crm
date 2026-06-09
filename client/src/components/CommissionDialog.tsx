@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
-import { Euro } from "lucide-react";
+import { Euro, Sparkles } from "lucide-react";
 import type { Customer, Commission } from "@shared/schema";
 
 const COMMISSION_TYPES: Record<string, string> = {
@@ -79,6 +79,30 @@ export default function CommissionDialog({
     queryKey: ["/api/customers"],
     enabled: open,
   });
+
+  // Find selected customer to show profile defaults
+  const selectedCustomer = customers.find((c) => String(c.id) === form.customerId) ?? null;
+  const hasProfileDefaults =
+    selectedCustomer?.defaultDisagio != null || selectedCustomer?.defaultVolume != null;
+
+  // When customer changes (new commission only), pre-fill disagio/volume from profile
+  useEffect(() => {
+    if (isEdit || !selectedCustomer) return;
+    const newDisagio =
+      selectedCustomer.defaultDisagio != null ? String(selectedCustomer.defaultDisagio) : "";
+    const newVolume =
+      selectedCustomer.defaultVolume != null ? String(selectedCustomer.defaultVolume) : "";
+    if (!newDisagio && !newVolume) return;
+    setForm((f) => {
+      const dis = parseFloat(newDisagio.replace(",", "."));
+      const vol = parseFloat(newVolume.replace(",", "."));
+      const auto =
+        !isNaN(dis) && !isNaN(vol) && dis > 0 && vol > 0
+          ? String((vol * dis / 100).toFixed(2))
+          : f.amount;
+      return { ...f, disagio: newDisagio, volume: newVolume, amount: auto };
+    });
+  }, [form.customerId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const createMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", "/api/commissions", data),
@@ -179,10 +203,32 @@ export default function CommissionDialog({
             </Select>
           </div>
 
+          {/* Profile defaults hint */}
+          {hasProfileDefaults && !isEdit && (
+            <div className="flex items-center gap-2 text-[11px] text-primary bg-primary/5 border border-primary/15 rounded-md px-3 py-2">
+              <Sparkles className="w-3 h-3 shrink-0" />
+              <span>
+                Vorschlag aus Kundenprofil:{" "}
+                {selectedCustomer?.defaultDisagio != null && (
+                  <strong>{selectedCustomer.defaultDisagio}% Disagio</strong>
+                )}
+                {selectedCustomer?.defaultDisagio != null && selectedCustomer?.defaultVolume != null && " · "}
+                {selectedCustomer?.defaultVolume != null && (
+                  <strong>
+                    {selectedCustomer.defaultVolume.toLocaleString("de-DE")} € Volumen
+                  </strong>
+                )}
+              </span>
+            </div>
+          )}
+
           {/* Volume + Disagio auto-calc */}
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="comm-volume">Volumen (€) <span className="text-muted-foreground font-normal text-xs">optional</span></Label>
+              <Label htmlFor="comm-volume">
+                Volumen (€){" "}
+                <span className="text-muted-foreground font-normal text-xs">optional</span>
+              </Label>
               <Input
                 id="comm-volume"
                 value={form.volume}
@@ -191,9 +237,10 @@ export default function CommissionDialog({
                   setForm((f) => {
                     const dis = parseFloat(f.disagio.replace(",", "."));
                     const v = parseFloat(vol.replace(",", "."));
-                    const auto = !isNaN(v) && !isNaN(dis) && dis > 0
-                      ? String((v * dis / 100).toFixed(2))
-                      : f.amount;
+                    const auto =
+                      !isNaN(v) && !isNaN(dis) && dis > 0
+                        ? String((v * dis / 100).toFixed(2))
+                        : f.amount;
                     return { ...f, volume: vol, amount: auto };
                   });
                 }}
@@ -204,7 +251,10 @@ export default function CommissionDialog({
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="comm-disagio">Disagio (%) <span className="text-muted-foreground font-normal text-xs">optional</span></Label>
+              <Label htmlFor="comm-disagio">
+                Disagio (%){" "}
+                <span className="text-muted-foreground font-normal text-xs">optional</span>
+              </Label>
               <Input
                 id="comm-disagio"
                 value={form.disagio}
@@ -213,9 +263,10 @@ export default function CommissionDialog({
                   setForm((f) => {
                     const vol = parseFloat(f.volume.replace(",", "."));
                     const d = parseFloat(dis.replace(",", "."));
-                    const auto = !isNaN(vol) && !isNaN(d) && d > 0
-                      ? String((vol * d / 100).toFixed(2))
-                      : f.amount;
+                    const auto =
+                      !isNaN(vol) && !isNaN(d) && d > 0
+                        ? String((vol * d / 100).toFixed(2))
+                        : f.amount;
                     return { ...f, disagio: dis, amount: auto };
                   });
                 }}
@@ -245,7 +296,8 @@ export default function CommissionDialog({
             </div>
             {form.volume && form.disagio && (
               <p className="text-[11px] text-muted-foreground">
-                Auto-berechnet: {form.volume} € × {form.disagio}% = {form.amount} €
+                Auto-berechnet: {form.volume} € × {form.disagio}% ={" "}
+                <strong>{form.amount} €</strong>
               </p>
             )}
           </div>

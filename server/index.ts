@@ -6,6 +6,9 @@ import { serveStatic } from "./static";
 import { createServer } from "node:http";
 import { syncAllActivitiesToCalendar } from "./gcalDirect";
 import { loadTokenFromDisk, requireGCalConnected } from "./oauth";
+import { startContractCron } from "./cron";
+
+
 
 // Load persisted OAuth token before anything else so gcalConfigured() is
 // accurate when routes are registered and the sync interval is set up.
@@ -125,8 +128,11 @@ app.use((req, res, next) => {
       // Initial run shortly after boot so we don't wait a full interval
       setTimeout(runSync, 10_000);
       setInterval(runSync, SYNC_INTERVAL_MS);
-
       log(`Google Calendar background sync scheduled every ${SYNC_INTERVAL_MS / 1000}s (token loaded: ${!!process.env.GCAL_REFRESH_TOKEN || "from disk"})`, "gcal");
+
+      // ── Vertragsende-Intelligenz Cron-Job ────────────────────────────────
+      startContractCron();
+      log("Cron-Job für Vertragsende-Check gestartet", "cron");
     },
   );
 })();

@@ -52,6 +52,9 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
 import { syncActivityToCalendar, gcalConfigured } from "./gcalDirect";
 import { registerOAuthRoutes, getStoredToken } from "./oauth";
 import { parseGermanDateTime } from "./dateParser";
+import { summarizeCustomerNotes } from "./ai";
+import { checkContractRenewals } from "./cron";
+
 
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   call: "Telefonat",
@@ -286,6 +289,31 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.status(204).end();
   });
 
+  // ── KI-Notiz-Zusammenfassung ───────────────────────────────────────────────
+  app.post("/api/customers/:id/summarize", async (req, res) => {
+    try {
+      const customerId = Number(req.params.id);
+      const customer = storage.getCustomer(customerId);
+      if (!customer) return res.status(404).json({ message: "Kunde nicht gefunden" });
+      const summary = await summarizeCustomerNotes(customerId);
+      res.json({ summary });
+    } catch (err: any) {
+      console.error("[AI] Zusammenfassung Fehler:", err);
+      res.status(500).json({ message: err.message || "Fehler bei der KI-Zusammenfassung" });
+    }
+  });
+
+  // ── Cron: Vertragsende-Check (manueller Trigger) ───────────────────────────
+  app.post("/api/cron/check-contracts", async (_req, res) => {
+    try {
+      const result = await checkContractRenewals();
+      res.json({ success: true, ...result });
+    } catch (err: any) {
+      console.error("[Cron] Manueller Trigger Fehler:", err);
+      res.status(500).json({ message: err.message || "Fehler beim Vertragsende-Check" });
+    }
+  });
+
   // ── Contract Upload & AI Analysis ─────────────────────────────────────────
   app.post("/api/analyze-contract", upload.single("file"), async (req, res) => {
     try {
@@ -306,6 +334,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
       res.status(500).json({ message: err.message || "Fehler bei der KI-Analyse" });
     }
   });
+
 
   // ── Notes ─────────────────────────────────────────────────────────────────
   app.get("/api/customers/:id/notes", (req, res) => {

@@ -33,6 +33,10 @@ export const customers = sqliteTable("customers", {
   selectedProduct: text("selected_product"),
   contractStart: text("contract_start"),
   contractEnd: text("contract_end"),
+  contractProduct: text("contract_product"),
+  // Provisions-Vorschläge (Standard-Werte für CommissionDialog)
+  defaultDisagio: real("default_disagio"),
+  defaultVolume: real("default_volume"),
   // Analytics
   lastActivityDate: text("last_activity_date"),
   // Meta
@@ -40,6 +44,7 @@ export const customers = sqliteTable("customers", {
 });
 
 export const insertCustomerSchema = createInsertSchema(customers).omit({
+
   id: true,
   createdAt: true,
 });
