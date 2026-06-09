@@ -142,6 +142,25 @@ export const insertCommissionSchema = createInsertSchema(commissions).omit({
 export type InsertCommission = z.infer<typeof insertCommissionSchema>;
 export type Commission = typeof commissions.$inferSelect;
 
+// ── Reminders (Wiedervorlagen) ─────────────────────────────────────────────
+export const reminders = sqliteTable("reminders", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id").notNull(),
+  description: text("description").notNull(),
+  dueDate: text("due_date").notNull(), // ISO date: YYYY-MM-DD
+  status: text("status").notNull().default("pending"), // pending | done | snoozed
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const insertReminderSchema = createInsertSchema(reminders).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertReminder = z.infer<typeof insertReminderSchema>;
+export type Reminder = typeof reminders.$inferSelect;
+
 // ── Activity Templates (recurring tasks) ───────────────────────────────────
 export const activityTemplates = sqliteTable("activity_templates", {
   id: integer("id").primaryKey({ autoIncrement: true }),

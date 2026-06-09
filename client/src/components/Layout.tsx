@@ -4,12 +4,13 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, Users, Activity, Menu, X, Sun, Moon, Settings, CalendarClock, Search,
-  BarChart2, Database, ListChecks, TrendingUp,
+  BarChart2, Database, ListChecks, TrendingUp, Bell,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { Activity as ActivityType } from "@shared/schema";
+import type { Activity as ActivityType, Reminder } from "@shared/schema";
 import GlobalSearch from "./GlobalSearch";
 import { checkOverdueTasks } from "@/lib/notifications";
+import { API_BASE } from "@/lib/queryClient";
 
 interface AppSettings {
   crmName: string;
@@ -18,6 +19,7 @@ interface AppSettings {
 
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/cockpit", label: "Tagescockpit", icon: Bell },
   { href: "/customers", label: "Kunden", icon: Users },
   { href: "/tasks", label: "Aufgaben", icon: ListChecks },
   { href: "/activities", label: "Aktivitäten", icon: Activity },
@@ -75,6 +77,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
 
   // Badge: überfällige Aufgaben
   const { data: activities = [] } = useQuery<ActivityType[]>({ queryKey: ["/api/activities"] });
+
+  // Badge: überfällige Wiedervorlagen
+  const { data: overdueReminders = [] } = useQuery<Reminder[]>({
+    queryKey: ["/api/reminders/overdue"],
+    queryFn: async () => {
+      const r = await fetch(`${API_BASE}/api/reminders/overdue`);
+      return r.json();
+    },
+    staleTime: 60_000,
+  });
 
   // Check overdue tasks and send notifications if enabled
   useEffect(() => {
@@ -146,7 +158,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto" role="navigation">
           {navItems.map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? location === "/" : location.startsWith(href);
-            const badge = href === "/tasks" && overdueCount > 0 ? overdueCount : null;
+            const badge =
+              href === "/tasks" && overdueCount > 0 ? overdueCount :
+              href === "/cockpit" && overdueReminders.length > 0 ? overdueReminders.length :
+              null;
             return (
               <Link key={href} href={href}>
                 <a
