@@ -3,12 +3,13 @@ import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
-  LayoutDashboard, Users, Activity, Menu, X, Sun, Moon, Settings, CalendarClock, Search,
+  LayoutDashboard, Users, ListTodo, Menu, X, Sun, Moon, Settings, CalendarClock, Search,
   BarChart2, Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Activity as ActivityType } from "@shared/schema";
 import GlobalSearch from "./GlobalSearch";
+import OverdueAlert from "./OverdueAlert";
 
 interface AppSettings {
   crmName: string;
@@ -17,7 +18,7 @@ interface AppSettings {
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/customers", label: "Kunden", icon: Users },
-  { href: "/activities", label: "Aufgaben", icon: Activity },
+  { href: "/tasks", label: "Aufgaben", icon: ListTodo },
   { href: "/analytics", label: "Analytics", icon: BarChart2 },
   { href: "/data-management", label: "Daten", icon: Database },
   { href: "/settings", label: "Einstellungen", icon: Settings },
@@ -67,9 +68,14 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const { data: appSettings } = useQuery<AppSettings>({ queryKey: ["/api/settings"] });
   const crmName = appSettings?.crmName ?? "CGP CRM";
 
-  // Badge: offene Aufgaben
+  // Badge: überfällige Aufgaben
   const { data: activities = [] } = useQuery<ActivityType[]>({ queryKey: ["/api/activities"] });
-  const openCount = activities.filter((a) => !a.done && a.dueDate).length;
+  const todayStart = new Date(); todayStart.setHours(0, 0, 0, 0);
+  const overdueCount = activities.filter((a) => {
+    if (a.done || !a.dueDate) return false;
+    const due = new Date(a.dueDate); due.setHours(0, 0, 0, 0);
+    return due < todayStart;
+  }).length;
 
   // Nächste fällige Aufgabe
   const nextDue = activities
@@ -118,7 +124,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <nav className="flex-1 px-3 py-3 space-y-0.5 overflow-y-auto" role="navigation">
           {navItems.map(({ href, label, icon: Icon }) => {
             const active = href === "/" ? location === "/" : location.startsWith(href);
-            const badge = href === "/activities" && openCount > 0 ? openCount : null;
+            const badge = href === "/tasks" && overdueCount > 0 ? overdueCount : null;
             return (
               <Link key={href} href={href}>
                 <a
@@ -234,6 +240,9 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </Button>
         </header>
+
+        {/* Overdue tasks alert banner */}
+        <OverdueAlert />
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8">

@@ -5,10 +5,12 @@ import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { useToast } from "@/hooks/use-toast";
 import Layout from "@/components/Layout";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import CustomersPage from "@/pages/CustomersPage";
 import CustomerDetailPage from "@/pages/CustomerDetailPage";
 import DashboardPage from "@/pages/DashboardPage";
 import ActivitiesPage from "@/pages/ActivitiesPage";
+import TasksPage from "@/pages/TasksPage";
 import SettingsPage from "@/pages/SettingsPage";
 import AnalyticsPage from "@/pages/Analytics";
 import DataManagementPage from "@/pages/DataManagement";
@@ -157,20 +159,23 @@ function CRMApp() {
   }, []);
 
   return (
-    <Router hook={useHashLocation}>
-      <Layout>
-        <Switch>
-          <Route path="/" component={DashboardPage} />
-          <Route path="/customers" component={CustomersPage} />
-          <Route path="/customers/:id" component={CustomerDetailPage} />
-          <Route path="/activities" component={ActivitiesPage} />
-          <Route path="/analytics" component={AnalyticsPage} />
-          <Route path="/data-management" component={DataManagementPage} />
-          <Route path="/settings" component={SettingsPage} />
-          <Route component={NotFound} />
-        </Switch>
-      </Layout>
-    </Router>
+    <ErrorBoundary>
+      <Router hook={useHashLocation}>
+        <Layout>
+          <Switch>
+            <Route path="/" component={DashboardPage} />
+            <Route path="/customers" component={CustomersPage} />
+            <Route path="/customers/:id" component={CustomerDetailPage} />
+            <Route path="/activities" component={ActivitiesPage} />
+            <Route path="/tasks" component={TasksPage} />
+            <Route path="/analytics" component={AnalyticsPage} />
+            <Route path="/data-management" component={DataManagementPage} />
+            <Route path="/settings" component={SettingsPage} />
+            <Route component={NotFound} />
+          </Switch>
+        </Layout>
+      </Router>
+    </ErrorBoundary>
   );
 }
 
@@ -200,10 +205,12 @@ function AppGate() {
 // ── Root ──────────────────────────────────────────────────────────────────────
 function App() {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AppGate />
-      <Toaster />
-    </QueryClientProvider>
+    <ErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AppGate />
+        <Toaster />
+      </QueryClientProvider>
+    </ErrorBoundary>
   );
 }
 

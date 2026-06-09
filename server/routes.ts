@@ -275,16 +275,24 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   app.post("/api/customers", (req, res) => {
     const result = insertCustomerSchema.safeParse(req.body);
-    if (!result.success) return res.status(400).json({ message: result.error.message });
+    if (!result.success) return res.status(400).json({
+      error: "validation_error",
+      message: "Bitte überprüfe deine Eingaben.",
+      details: result.error.flatten().fieldErrors,
+    });
     const customer = storage.createCustomer(result.data);
     res.status(201).json(customer);
   });
 
   app.patch("/api/customers/:id", (req, res) => {
     const partial = insertCustomerSchema.partial().safeParse(req.body);
-    if (!partial.success) return res.status(400).json({ message: partial.error.message });
+    if (!partial.success) return res.status(400).json({
+      error: "validation_error",
+      message: "Bitte überprüfe deine Eingaben.",
+      details: partial.error.flatten().fieldErrors,
+    });
     const customer = storage.updateCustomer(Number(req.params.id), partial.data);
-    if (!customer) return res.status(404).json({ message: "Kunde nicht gefunden" });
+    if (!customer) return res.status(404).json({ error: "not_found", message: "Kunde nicht gefunden" });
     res.json(customer);
   });
 
@@ -403,8 +411,45 @@ export function registerRoutes(httpServer: Server, app: Express) {
   });
 
   // ── Activities ────────────────────────────────────────────────────────────
-  app.get("/api/activities", (_req, res) => {
-    res.json(storage.getAllActivities());
+  app.get("/api/activities", (req, res) => {
+    let acts = storage.getAllActivities();
+
+    // ?status=open  → only undone
+    // ?status=done  → only done
+    const status = req.query.status as string | undefined;
+    if (status === "open") acts = acts.filter((a) => !a.done);
+    else if (status === "done") acts = acts.filter((a) => a.done);
+
+    // ?overdue=true → only past-due, undone tasks
+    if (req.query.overdue === "true") {
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      acts = acts.filter((a) => {
+        if (a.done || !a.dueDate) return false;
+        const due = new Date(a.dueDate); due.setHours(0, 0, 0, 0);
+        return due < today;
+      });
+    }
+
+    // ?customerId=123 → filter by customer
+    const customerId = req.query.customerId ? Number(req.query.customerId) : null;
+    if (customerId) acts = acts.filter((a) => a.customerId === customerId);
+
+    // ?type=call,demo → filter by type(s)
+    const typeFilter = req.query.type as string | undefined;
+    if (typeFilter) {
+      const types = typeFilter.split(",").map((t) => t.trim()).filter(Boolean);
+      if (types.length > 0) acts = acts.filter((a) => types.includes(a.type));
+    }
+
+    // Always sort by dueDate ascending (nulls last)
+    acts.sort((a, b) => {
+      if (!a.dueDate && !b.dueDate) return 0;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return a.dueDate < b.dueDate ? -1 : 1;
+    });
+
+    res.json(acts);
   });
 
   app.get("/api/customers/:id/activities", (req, res) => {
@@ -422,7 +467,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
     }
 
     const result = insertActivitySchema.safeParse(body);
-    if (!result.success) return res.status(400).json({ message: result.error.message });
+    if (!result.success) return res.status(400).json({
+      error: "validation_error",
+      message: "Bitte überprüfe deine Eingaben.",
+      details: result.error.flatten().fieldErrors,
+    });
     const activity = storage.createActivity(result.data);
 
     // —— Direkter Google Calendar Sync (OAuth2, kein Perplexity nötig) ——
@@ -459,7 +508,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
   app.patch("/api/activities/:id", (req, res) => {
     const partial = insertActivitySchema.partial().safeParse(req.body);
-    if (!partial.success) return res.status(400).json({ message: partial.error.message });
+    if (!partial.success) return res.status(400).json({
+      error: "validation_error",
+      message: "Bitte überprüfe deine Eingaben.",
+      details: partial.error.flatten().fieldErrors,
+    });
     // If marking as done, record completedAt
     const updateData: any = { ...partial.data };
     if (partial.data.done === true) {
