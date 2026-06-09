@@ -111,9 +111,11 @@ export async function syncActivityToCalendar(activity: {
   const startISO = `${activity.dueDate}T${timeStr}:00+02:00`;
 
   // End = 1 hour later
-  const startDate = new Date(`${activity.dueDate}T${timeStr}:00+02:00`);
-  const endDate = new Date(startDate.getTime() + 60 * 60 * 1000);
-  const endISO = endDate.toISOString().replace("Z", "+02:00").replace(/\.\d{3}/, "");
+  const [hours, minutes] = timeStr.split(":").map(Number);
+  const endHours = String((hours + 1) % 24).padStart(2, "0");
+  const endMinutes = String(minutes).padStart(2, "0");
+  const endISO = `${activity.dueDate}T${endHours}:${endMinutes}:00+02:00`;
+
 
   const event: GCalEvent = {
     summary: `[CGP CRM] ${typeLabel}: ${companyName}`,
