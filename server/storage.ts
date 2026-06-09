@@ -125,6 +125,10 @@ runMigration("ALTER TABLE customers ADD COLUMN last_activity_date TEXT");
 runMigration("ALTER TABLE notes ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))");
 runMigration("ALTER TABLE settings ADD COLUMN advisor_name TEXT DEFAULT 'Lars Herzer'");
 runMigration("ALTER TABLE settings ADD COLUMN monthly_commission_quota REAL");
+// AI & contract intelligence fields
+runMigration("ALTER TABLE customers ADD COLUMN contract_product TEXT");
+runMigration("ALTER TABLE customers ADD COLUMN default_disagio REAL");
+runMigration("ALTER TABLE customers ADD COLUMN default_volume REAL");
 
 export interface IStorage {
   // Customers

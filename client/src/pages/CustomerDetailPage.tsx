@@ -7,8 +7,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
+
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -21,8 +21,8 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   ArrowLeft, Phone, Mail, MapPin, Building2, Euro, CreditCard,
-  Plus, Trash2, CheckSquare, Square, Calendar, FileText, Pencil, Loader2, Sparkles, CalendarCheck,
-  TrendingUp,
+  Plus, Trash2, CheckSquare, Calendar, FileText, Loader2, Sparkles, CalendarCheck,
+  TrendingUp, Copy, RefreshCw, Settings2, AlertTriangle, CheckCircle2, Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Customer, Note, Activity, InsertNote, InsertActivity, NoteTemplate, Commission } from "@shared/schema";
@@ -33,11 +33,12 @@ const NOTE_TYPES: Record<string, string> = {
   note: "Notiz", call: "Anruf", meeting: "Meeting", email: "E-Mail",
 };
 const ACT_TYPES: Record<string, string> = {
-  call: "Anruf", follow_up: "Follow-up", meeting: "Meeting", email: "E-Mail",
+  call: "Anruf", follow_up: "Follow-up", meeting: "Meeting", email: "E-Mail", renewal: "Verlängerung",
 };
 const ACT_CLASS: Record<string, string> = {
   call: "act-call", follow_up: "act-follow_up",
   meeting: "text-indigo-600 dark:text-indigo-400", email: "text-cyan-600 dark:text-cyan-400",
+  renewal: "text-amber-600 dark:text-amber-400",
 };
 
 function InfoRow({ icon: Icon, label, value, href }: { icon: any; label: string; value?: string | null; href?: string }) {
@@ -48,18 +49,22 @@ function InfoRow({ icon: Icon, label, value, href }: { icon: any; label: string;
       <div>
         <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-semibold">{label}</p>
         {href ? (
-          <a
-            href={href}
-            className="text-sm text-primary font-medium hover:underline"
-          >
-            {value}
-          </a>
+          <a href={href} className="text-sm text-primary font-medium hover:underline">{value}</a>
         ) : (
           <p className="text-sm text-foreground font-medium">{value}</p>
         )}
       </div>
     </div>
   );
+}
+
+/** Returns days until a date (negative = past) */
+function daysUntil(dateStr: string): number {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const target = new Date(dateStr);
+  target.setHours(0, 0, 0, 0);
+  return Math.ceil((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 export default function CustomerDetailPage() {
@@ -73,6 +78,22 @@ export default function CustomerDetailPage() {
   const [deleteNoteId, setDeleteNoteId] = useState<number | null>(null);
   const [deleteActId, setDeleteActId] = useState<number | null>(null);
   const [commissionDialogOpen, setCommissionDialogOpen] = useState(false);
+
+  // Provisions-Einstellungen
+  const [provForm, setProvForm] = useState({ defaultDisagio: "", defaultVolume: "" });
+  const [provSaving, setProvSaving] = useState(false);
+  const [provInitialized, setProvInitialized] = useState(false);
+
+  // Vertrag
+  const [contractForm, setContractForm] = useState({ contractEnd: "", contractProduct: "" });
+  const [contractSaving, setContractSaving] = useState(false);
+  const [contractInitialized, setContractInitialized] = useState(false);
+
+  // KI-Zusammenfassung
+  const [aiSummary, setAiSummary] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const [copied, setCopied] = useState(false);
 
   // Forms
   const [noteForm, setNoteForm] = useState<Partial<InsertNote>>({ title: "", content: "", type: "note" });
@@ -116,6 +137,22 @@ export default function CustomerDetailPage() {
   });
   const customerCommissions = commissionsData?.commissions ?? [];
   const customerCommissionsTotal = commissionsData?.total ?? 0;
+
+  // Initialize local forms once customer data arrives
+  if (customer && !provInitialized) {
+    setProvInitialized(true);
+    setProvForm({
+      defaultDisagio: customer.defaultDisagio != null ? String(customer.defaultDisagio) : "",
+      defaultVolume: customer.defaultVolume != null ? String(customer.defaultVolume) : "",
+    });
+  }
+  if (customer && !contractInitialized) {
+    setContractInitialized(true);
+    setContractForm({
+      contractEnd: customer.contractEnd ?? "",
+      contractProduct: customer.contractProduct ?? "",
+    });
+  }
 
   // Mutations — Notes
   const createNote = useMutation({
@@ -169,6 +206,88 @@ export default function CustomerDetailPage() {
     },
   });
 
+  // ── Save handlers ──────────────────────────────────────────────────────────
+  const saveProvisionSettings = async () => {
+    setProvSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/customers/${custId}`, {
+        defaultDisagio: provForm.defaultDisagio ? parseFloat(provForm.defaultDisagio.replace(",", ".")) : null,
+        defaultVolume: provForm.defaultVolume ? parseFloat(provForm.defaultVolume.replace(",", ".")) : null,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId] });
+      toast({ title: "Provisions-Einstellungen gespeichert ✓" });
+    } catch (err: any) {
+      toast({ title: "Fehler", description: err.message, variant: "destructive" });
+    } finally {
+      setProvSaving(false);
+    }
+  };
+
+  const saveContractSettings = async () => {
+    setContractSaving(true);
+    try {
+      await apiRequest("PATCH", `/api/customers/${custId}`, {
+        contractEnd: contractForm.contractEnd || null,
+        contractProduct: contractForm.contractProduct || null,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId] });
+      toast({ title: "Vertragseinstellungen gespeichert ✓" });
+    } catch (err: any) {
+      toast({ title: "Fehler", description: err.message, variant: "destructive" });
+    } finally {
+      setContractSaving(false);
+    }
+  };
+
+  const createRenewalTask = async () => {
+    if (!contractForm.contractEnd) {
+      toast({ title: "Bitte zuerst Vertragsende speichern", variant: "destructive" });
+      return;
+    }
+    try {
+      const endDate = new Date(contractForm.contractEnd);
+      const days = daysUntil(contractForm.contractEnd);
+      await apiRequest("POST", `/api/customers/${custId}/activities`, {
+        type: "renewal",
+        description: `Verlängerungsgespräch – Vertragsende in ${days} Tagen (${endDate.toLocaleDateString("de-DE")})`,
+        priority: days <= 30 ? "high" : "medium",
+        dueDate: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000).toISOString().split("T")[0],
+        done: false,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId, "activities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
+      toast({ title: "Verlängerungsaufgabe erstellt ✓" });
+    } catch (err: any) {
+      toast({ title: "Fehler", description: err.message, variant: "destructive" });
+    }
+  };
+
+  const fetchAiSummary = async () => {
+    setAiLoading(true);
+    setAiError("");
+    setAiSummary("");
+    try {
+      const r = await apiRequest("POST", `/api/customers/${custId}/summarize`);
+      const data = await r.json();
+      setAiSummary(data.summary);
+    } catch (err: any) {
+      setAiError(err.message || "Fehler bei der KI-Zusammenfassung");
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  const copyToClipboard = async () => {
+    if (!aiSummary) return;
+    try {
+      await navigator.clipboard.writeText(aiSummary);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({ title: "Kopieren fehlgeschlagen", variant: "destructive" });
+    }
+  };
+
   if (cLoad) {
     return (
       <div className="space-y-4">
@@ -189,6 +308,21 @@ export default function CustomerDetailPage() {
   }
 
   const pendingActs = activities.filter((a) => !a.done).length;
+
+  // Contract end status
+  const contractDaysLeft = contractForm.contractEnd ? daysUntil(contractForm.contractEnd) : null;
+  const contractStatusColor =
+    contractDaysLeft === null ? "" :
+    contractDaysLeft < 0 ? "text-muted-foreground" :
+    contractDaysLeft < 60 ? "text-red-600 dark:text-red-400" :
+    contractDaysLeft < 90 ? "text-amber-600 dark:text-amber-400" :
+    "text-green-600 dark:text-green-400";
+  const contractStatusIcon =
+    contractDaysLeft === null ? null :
+    contractDaysLeft < 0 ? <Clock className="w-3.5 h-3.5" /> :
+    contractDaysLeft < 60 ? <AlertTriangle className="w-3.5 h-3.5" /> :
+    contractDaysLeft < 90 ? <Clock className="w-3.5 h-3.5" /> :
+    <CheckCircle2 className="w-3.5 h-3.5" />;
 
   return (
     <div className="space-y-5 max-w-5xl">
@@ -296,12 +430,10 @@ export default function CustomerDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4 space-y-3">
-                {/* Gesamt */}
                 <div className="flex justify-between items-center py-1.5 border-b border-border">
                   <span className="text-xs font-bold text-foreground">Gesamt-Disagio (Händler zahlt)</span>
                   <span className="text-sm font-black text-primary">{customer.girocardDisagio.toFixed(3)} %</span>
                 </div>
-                {/* Aufschlüsselung */}
                 {[
                   { label: "Interchange (an Hausbank)", val: customer.girocardInterchange, color: "bg-blue-500", tip: "EU max. 0,20 %" },
                   { label: "Scheme Fee (ans DK-Netz)", val: customer.girocardSchemeFee, color: "bg-indigo-400", tip: "Girocard-Netzgebühr" },
@@ -337,12 +469,10 @@ export default function CustomerDetailPage() {
                 </CardTitle>
               </CardHeader>
               <CardContent className="px-4 pb-4 space-y-3">
-                {/* Gesamt */}
                 <div className="flex justify-between items-center py-1.5 border-b border-border">
                   <span className="text-xs font-bold text-foreground">Gesamt-Disagio (Händler zahlt)</span>
                   <span className="text-sm font-black text-primary">{customer.creditcardDisagio.toFixed(3)} %</span>
                 </div>
-                {/* Aufschlüsselung */}
                 {[
                   { label: "Interchange (an kartenausg. Bank)", val: customer.creditcardInterchange, color: "bg-amber-500", tip: "EU max. 0,30 %" },
                   { label: "Scheme Fee (an Visa / Mastercard)", val: customer.creditcardSchemeFee, color: "bg-orange-400", tip: "Netzgebühr" },
@@ -369,6 +499,194 @@ export default function CustomerDetailPage() {
           )}
         </div>
       )}
+
+      {/* ── Vertrag + Provisions-Einstellungen ── */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+
+        {/* Vertrag */}
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-primary" /> Vertrag
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="contract-end">Vertragsende</Label>
+              <Input
+                id="contract-end"
+                type="date"
+                value={contractForm.contractEnd}
+                onChange={(e) => setContractForm((f) => ({ ...f, contractEnd: e.target.value }))}
+              />
+              {contractDaysLeft !== null && contractForm.contractEnd && (
+                <div className={cn("flex items-center gap-1.5 text-xs font-semibold mt-1", contractStatusColor)}>
+                  {contractStatusIcon}
+                  {contractDaysLeft < 0
+                    ? `Abgelaufen vor ${Math.abs(contractDaysLeft)} Tagen`
+                    : contractDaysLeft === 0
+                    ? "Läuft heute ab!"
+                    : `Noch ${contractDaysLeft} Tage`}
+                </div>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="contract-product">Produkt</Label>
+              <Input
+                id="contract-product"
+                value={contractForm.contractProduct}
+                onChange={(e) => setContractForm((f) => ({ ...f, contractProduct: e.target.value }))}
+                placeholder="z.B. EC-Terminal stationär"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <Button
+                size="sm"
+                variant="outline"
+                className="flex-1 h-8 text-xs gap-1.5"
+                onClick={saveContractSettings}
+                disabled={contractSaving}
+              >
+                {contractSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                Speichern
+              </Button>
+              {contractForm.contractEnd && (
+                <Button
+                  size="sm"
+                  className="flex-1 h-8 text-xs gap-1.5"
+                  onClick={createRenewalTask}
+                >
+                  <RefreshCw className="w-3 h-3" /> Verlängerungsaufgabe
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Provisions-Einstellungen */}
+        <Card>
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Settings2 className="w-4 h-4 text-primary" /> Provisions-Einstellungen
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 space-y-3">
+            <p className="text-[11px] text-muted-foreground">
+              Standard-Werte für neue Provisionen. Werden im Provisions-Dialog automatisch vorausgefüllt.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="prov-disagio">Standard-Disagio (%)</Label>
+                <Input
+                  id="prov-disagio"
+                  type="number"
+                  min="0"
+                  step="0.001"
+                  value={provForm.defaultDisagio}
+                  onChange={(e) => setProvForm((f) => ({ ...f, defaultDisagio: e.target.value }))}
+                  placeholder="z.B. 0.25"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="prov-volume">Standard-Volumen (€)</Label>
+                <Input
+                  id="prov-volume"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value={provForm.defaultVolume}
+                  onChange={(e) => setProvForm((f) => ({ ...f, defaultVolume: e.target.value }))}
+                  placeholder="z.B. 50000"
+                />
+              </div>
+            </div>
+            {provForm.defaultDisagio && provForm.defaultVolume && (
+              <p className="text-[11px] text-muted-foreground">
+                Vorschau:{" "}
+                <strong>
+                  {(parseFloat(provForm.defaultVolume) * parseFloat(provForm.defaultDisagio) / 100).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                </strong>{" "}
+                Provision
+              </p>
+            )}
+            <Button
+              size="sm"
+              variant="outline"
+              className="w-full h-8 text-xs"
+              onClick={saveProvisionSettings}
+              disabled={provSaving}
+            >
+              {provSaving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+              Speichern
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* ── KI-Zusammenfassung ── */}
+      <Card>
+        <CardHeader className="pb-2 pt-4 px-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-primary" /> KI-Zusammenfassung
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              {aiSummary && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={copyToClipboard}
+                >
+                  {copied ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                  {copied ? "Kopiert!" : "Kopieren"}
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5"
+                onClick={fetchAiSummary}
+                disabled={aiLoading}
+              >
+                {aiLoading ? (
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                ) : (
+                  <Sparkles className="w-3 h-3" />
+                )}
+                {aiLoading ? "Zusammenfassen…" : "Zusammenfassen"}
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          {!aiSummary && !aiLoading && !aiError && (
+            <div className="text-center py-6 text-muted-foreground">
+              <Sparkles className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
+              <p className="text-xs">
+                Klicke "Zusammenfassen" um eine KI-Zusammenfassung aller Notizen und Aktivitäten zu erstellen.
+              </p>
+            </div>
+          )}
+          {aiLoading && (
+            <div className="flex items-center gap-3 py-4 text-muted-foreground">
+              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+              <p className="text-sm">KI analysiert Notizen und Aktivitäten…</p>
+            </div>
+          )}
+          {aiError && (
+            <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <p>{aiError}</p>
+            </div>
+          )}
+          {aiSummary && !aiLoading && (
+            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
+              <p className="text-sm text-foreground leading-relaxed">{aiSummary}</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Commissions Card */}
       <Card>
