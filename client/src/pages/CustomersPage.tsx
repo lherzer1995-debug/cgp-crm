@@ -637,7 +637,19 @@ export default function CustomersPage() {
             <div className="text-center py-16 text-muted-foreground">
               <Building2 className="w-10 h-10 mx-auto mb-3 opacity-30" />
               <p className="text-sm font-medium">Keine Kunden gefunden</p>
-              {search && <p className="text-xs mt-1">Suche anpassen oder neuen Kunden anlegen</p>}
+              {search ? (
+                <p className="text-xs mt-1">Suche anpassen oder neuen Kunden anlegen</p>
+              ) : (
+                <>
+                  <p className="text-xs mt-1">Lege deinen ersten Kunden an</p>
+                  <button
+                    onClick={() => { document.querySelector<HTMLButtonElement>("[data-testid='button-add-customer']")?.click(); }}
+                    className="mt-3 text-xs text-primary hover:underline font-medium"
+                  >
+                    + Neuen Kunden anlegen
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">

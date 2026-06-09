@@ -13,13 +13,14 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Euro, Sparkles } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { Customer, Commission } from "@shared/schema";
 
-const COMMISSION_TYPES: Record<string, string> = {
-  sale: "Abschluss (Sale)",
-  renewal: "Verlängerung (Renewal)",
-  upsell: "Upsell",
-  other: "Sonstiges",
+const COMMISSION_TYPES: Record<string, { label: string; short: string; color: string }> = {
+  sale: { label: "Abschluss (Sale)", short: "Abschluss", color: "text-green-600" },
+  renewal: { label: "Verlängerung (Renewal)", short: "Verlängerung", color: "text-blue-600" },
+  upsell: { label: "Upsell", short: "Upsell", color: "text-purple-600" },
+  other: { label: "Sonstiges", short: "Sonstiges", color: "text-muted-foreground" },
 };
 
 interface CommissionDialogProps {
@@ -182,26 +183,28 @@ export default function CommissionDialog({
         </DialogHeader>
 
         <div className="space-y-4 pt-2">
-          {/* Customer */}
-          <div className="space-y-1.5">
-            <Label>Kunde *</Label>
-            <Select
-              value={form.customerId}
-              onValueChange={(v) => setForm((f) => ({ ...f, customerId: v }))}
-              disabled={!!preselectedCustomerId && !isEdit}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Kunden auswählen…" />
-              </SelectTrigger>
-              <SelectContent>
-                {customers.map((c) => (
-                  <SelectItem key={c.id} value={String(c.id)}>
-                    {c.companyName}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
+          {/* Customer — only show when not preselected */}
+          {(!preselectedCustomerId || isEdit) && (
+            <div className="space-y-1.5">
+              <Label>Kunde *</Label>
+              <Select
+                value={form.customerId}
+                onValueChange={(v) => setForm((f) => ({ ...f, customerId: v }))}
+                disabled={!!preselectedCustomerId && !isEdit}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Kunden auswählen…" />
+                </SelectTrigger>
+                <SelectContent>
+                  {customers.map((c) => (
+                    <SelectItem key={c.id} value={String(c.id)}>
+                      {c.companyName}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Profile defaults hint */}
           {hasProfileDefaults && !isEdit && (
@@ -313,22 +316,26 @@ export default function CommissionDialog({
             />
           </div>
 
-          {/* Type */}
+          {/* Type pills */}
           <div className="space-y-1.5">
             <Label>Typ</Label>
-            <Select
-              value={form.type}
-              onValueChange={(v) => setForm((f) => ({ ...f, type: v }))}
-            >
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {Object.entries(COMMISSION_TYPES).map(([v, l]) => (
-                  <SelectItem key={v} value={v}>{l}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <div className="flex gap-2 flex-wrap">
+              {Object.entries(COMMISSION_TYPES).map(([v, cfg]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setForm((f) => ({ ...f, type: v }))}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors",
+                    form.type === v
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : cn("bg-background border-border hover:border-primary", cfg.color)
+                  )}
+                >
+                  {cfg.short}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Description */}
