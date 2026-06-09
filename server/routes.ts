@@ -1,10 +1,42 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage } from "./storage";
-import { insertCustomerSchema, insertNoteSchema, insertActivitySchema } from "@shared/schema";
-import { z } from "zod";
+import { storage, db } from "./storage";
+import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema } from "@shared/schema";
+import { customers } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import multer from "multer";
 import mammoth from "mammoth";
+import fs from "fs";
+import path from "path";
+
+// Uploads directory for note attachments
+const UPLOADS_DIR = process.env.NODE_ENV === "production" && fs.existsSync("/data")
+  ? "/data/uploads"
+  : path.join(process.cwd(), "uploads");
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+const attachmentUpload = multer({
+  storage: multer.diskStorage({
+    destination: (_req, _file, cb) => cb(null, UPLOADS_DIR),
+    filename: (_req, file, cb) => {
+      const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const ext = path.extname(file.originalname);
+      cb(null, `${unique}${ext}`);
+    },
+  }),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      "application/pdf",
+      "application/msword",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "application/vnd.ms-excel",
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ];
+    if (allowed.includes(file.mimetype)) cb(null, true);
+    else cb(new Error("Nur PDF, DOC, DOCX, XLS, XLSX erlaubt"));
+  },
+});
 // PDF Text-Extraktion ohne externe System-Tools
 async function extractPdfText(buffer: Buffer): Promise<string> {
   // Dynamischer Import um Bundle-Probleme zu vermeiden
@@ -290,11 +322,74 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.post("/api/customers/:id/notes", (req, res) => {
     const result = insertNoteSchema.safeParse({ ...req.body, customerId: Number(req.params.id) });
     if (!result.success) return res.status(400).json({ message: result.error.message });
+    // Update customer's last_activity_date
+    storage.updateCustomer(Number(req.params.id), { lastActivityDate: new Date().toISOString() });
     res.status(201).json(storage.createNote(result.data));
+  });
+
+  app.put("/api/notes/:id", (req, res) => {
+    const partial = insertNoteSchema.partial().safeParse(req.body);
+    if (!partial.success) return res.status(400).json({ message: partial.error.message });
+    const note = storage.updateNote(Number(req.params.id), partial.data);
+    if (!note) return res.status(404).json({ message: "Notiz nicht gefunden" });
+    res.json(note);
   });
 
   app.delete("/api/notes/:id", (req, res) => {
     storage.deleteNote(Number(req.params.id));
+    res.status(204).end();
+  });
+
+  // ── Note Templates ────────────────────────────────────────────────────────
+  app.get("/api/note-templates", (_req, res) => {
+    res.json(storage.getNoteTemplates());
+  });
+
+  app.post("/api/note-templates", (req, res) => {
+    const result = insertNoteTemplateSchema.safeParse(req.body);
+    if (!result.success) return res.status(400).json({ message: result.error.message });
+    res.status(201).json(storage.createNoteTemplate(result.data));
+  });
+
+  app.delete("/api/note-templates/:id", (req, res) => {
+    storage.deleteNoteTemplate(Number(req.params.id));
+    res.status(204).end();
+  });
+
+  // ── Attachments ───────────────────────────────────────────────────────────
+  app.post("/api/notes/:id/attachments", attachmentUpload.single("file"), (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Keine Datei hochgeladen" });
+      const noteId = Number(req.params.id);
+      const note = storage.getNote(noteId);
+      if (!note) return res.status(404).json({ message: "Notiz nicht gefunden" });
+      const attachment = storage.createAttachment({
+        noteId,
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        fileType: req.file.mimetype,
+        filePath: req.file.filename,
+      });
+      res.status(201).json(attachment);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/attachments/:id/download", (req, res) => {
+    const attachment = storage.getAttachment(Number(req.params.id));
+    if (!attachment) return res.status(404).json({ message: "Anhang nicht gefunden" });
+    const filePath = path.join(UPLOADS_DIR, attachment.filePath);
+    if (!fs.existsSync(filePath)) return res.status(404).json({ message: "Datei nicht gefunden" });
+    res.download(filePath, attachment.fileName);
+  });
+
+  app.delete("/api/attachments/:id", (req, res) => {
+    const attachment = storage.getAttachment(Number(req.params.id));
+    if (!attachment) return res.status(404).json({ message: "Anhang nicht gefunden" });
+    const filePath = path.join(UPLOADS_DIR, attachment.filePath);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    storage.deleteAttachment(Number(req.params.id));
     res.status(204).end();
   });
 
@@ -365,8 +460,17 @@ export function registerRoutes(httpServer: Server, app: Express) {
   app.patch("/api/activities/:id", (req, res) => {
     const partial = insertActivitySchema.partial().safeParse(req.body);
     if (!partial.success) return res.status(400).json({ message: partial.error.message });
-    const activity = storage.updateActivity(Number(req.params.id), partial.data);
+    // If marking as done, record completedAt
+    const updateData: any = { ...partial.data };
+    if (partial.data.done === true) {
+      updateData.completedAt = new Date().toISOString();
+    } else if (partial.data.done === false) {
+      updateData.completedAt = null;
+    }
+    const activity = storage.updateActivity(Number(req.params.id), updateData);
     if (!activity) return res.status(404).json({ message: "Aktivität nicht gefunden" });
+    // Update customer's last_activity_date
+    storage.updateCustomer(activity.customerId, { lastActivityDate: new Date().toISOString() });
     res.json(activity);
   });
 
@@ -386,5 +490,352 @@ export function registerRoutes(httpServer: Server, app: Express) {
     });
   });
 
+  // ── Analytics ─────────────────────────────────────────────────────────────
+  app.get("/api/analytics/overview", (_req, res) => {
+    const allCustomers = storage.getCustomers();
+    const allActivities = storage.getAllActivities();
+
+    const leads = allCustomers.filter((c) => c.status === "lead").length;
+    const prospects = allCustomers.filter((c) => c.status === "prospect").length;
+    const active = allCustomers.filter((c) => c.status === "active").length;
+    const churned = allCustomers.filter((c) => c.status === "churned").length;
+    const total = allCustomers.length;
+
+    // Conversion rate: active customers / total leads ever (leads + prospects + active + churned)
+    const conversionRate = total > 0 ? Math.round((active / total) * 100) : 0;
+
+    // Activity type breakdown
+    const activityByType: Record<string, number> = {};
+    for (const a of allActivities) {
+      activityByType[a.type] = (activityByType[a.type] || 0) + 1;
+    }
+
+    // Average sales cycle: days from first activity to customer becoming active
+    const activeCustomers = allCustomers.filter((c) => c.status === "active");
+    let avgSalesCycleDays: number | null = null;
+    const cycleDays: number[] = [];
+    for (const c of activeCustomers) {
+      const custActivities = allActivities.filter((a) => a.customerId === c.id && a.completedAt);
+      if (custActivities.length > 0) {
+        const firstCompleted = custActivities.sort((a, b) =>
+          (a.completedAt ?? "") < (b.completedAt ?? "") ? -1 : 1
+        )[0];
+        const lastCompleted = custActivities.sort((a, b) =>
+          (a.completedAt ?? "") > (b.completedAt ?? "") ? -1 : 1
+        )[0];
+        const start = new Date(firstCompleted.completedAt!);
+        const end = new Date(lastCompleted.completedAt!);
+        const days = Math.round((end.getTime() - start.getTime()) / 86400000);
+        if (days >= 0) cycleDays.push(days);
+      }
+    }
+    if (cycleDays.length > 0) {
+      avgSalesCycleDays = Math.round(cycleDays.reduce((a, b) => a + b, 0) / cycleDays.length);
+    }
+
+    // Activities per month (last 6 months)
+    const now = new Date();
+    const monthlyActivities: { month: string; count: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("de-DE", { month: "short", year: "2-digit" });
+      const count = allActivities.filter((a) => (a.createdAt ?? "").startsWith(key)).length;
+      monthlyActivities.push({ month: label, count });
+    }
+
+    res.json({
+      total,
+      leads,
+      prospects,
+      active,
+      churned,
+      conversionRate,
+      activityByType,
+      avgSalesCycleDays,
+      monthlyActivities,
+      totalActivities: allActivities.length,
+      completedActivities: allActivities.filter((a) => a.done).length,
+    });
+  });
+
+  app.get("/api/analytics/conversion", (_req, res) => {
+    const allCustomers = storage.getCustomers();
+    const total = allCustomers.length;
+    const byStatus = {
+      lead: allCustomers.filter((c) => c.status === "lead").length,
+      prospect: allCustomers.filter((c) => c.status === "prospect").length,
+      active: allCustomers.filter((c) => c.status === "active").length,
+      churned: allCustomers.filter((c) => c.status === "churned").length,
+    };
+    // Conversion rates
+    const leadToProspect = total > 0 ? Math.round(((byStatus.prospect + byStatus.active) / total) * 100) : 0;
+    const prospectToActive = (byStatus.prospect + byStatus.active) > 0
+      ? Math.round((byStatus.active / (byStatus.prospect + byStatus.active)) * 100) : 0;
+    const overallConversion = total > 0 ? Math.round((byStatus.active / total) * 100) : 0;
+
+    // Monthly conversion trend (last 6 months based on createdAt)
+    const now = new Date();
+    const trend: { month: string; leads: number; active: number; rate: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("de-DE", { month: "short", year: "2-digit" });
+      const monthLeads = allCustomers.filter((c) => (c.createdAt ?? "").startsWith(key)).length;
+      const monthActive = allCustomers.filter((c) => (c.createdAt ?? "").startsWith(key) && c.status === "active").length;
+      trend.push({ month: label, leads: monthLeads, active: monthActive, rate: monthLeads > 0 ? Math.round((monthActive / monthLeads) * 100) : 0 });
+    }
+
+    res.json({ byStatus, leadToProspect, prospectToActive, overallConversion, trend });
+  });
+
+  app.get("/api/analytics/activities", (_req, res) => {
+    const allActivities = storage.getAllActivities();
+    const byType: Record<string, number> = {};
+    for (const a of allActivities) {
+      byType[a.type] = (byType[a.type] || 0) + 1;
+    }
+    const now = new Date();
+    const byMonth: { month: string; count: number }[] = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      const label = d.toLocaleDateString("de-DE", { month: "short", year: "2-digit" });
+      byMonth.push({ month: label, count: allActivities.filter((a) => (a.createdAt ?? "").startsWith(key)).length });
+    }
+    res.json({ byType, byMonth, total: allActivities.length, completed: allActivities.filter((a) => a.done).length });
+  });
+
+  app.get("/api/analytics/sales-cycle", (_req, res) => {
+    const allCustomers = storage.getCustomers();
+    const allActivities = storage.getAllActivities();
+    const activeCustomers = allCustomers.filter((c) => c.status === "active");
+    const cycles: { customerId: number; companyName: string; days: number }[] = [];
+    for (const c of activeCustomers) {
+      const custActivities = allActivities.filter((a) => a.customerId === c.id && a.completedAt);
+      if (custActivities.length >= 1) {
+        const sorted = custActivities.sort((a, b) => (a.completedAt ?? "") < (b.completedAt ?? "") ? -1 : 1);
+        const first = new Date(sorted[0].completedAt!);
+        const last = new Date(sorted[sorted.length - 1].completedAt!);
+        const days = Math.max(0, Math.round((last.getTime() - first.getTime()) / 86400000));
+        cycles.push({ customerId: c.id, companyName: c.companyName, days });
+      }
+    }
+    const avg = cycles.length > 0 ? Math.round(cycles.reduce((s, c) => s + c.days, 0) / cycles.length) : null;
+    res.json({ avgDays: avg, cycles });
+  });
+
+  // ── CSV Import / Export ───────────────────────────────────────────────────
+  app.get("/api/export/csv", (req, res) => {
+    const allCustomers = storage.getCustomers();
+    const allActivities = storage.getAllActivities();
+    const withActivities = req.query.activities === "true";
+
+    const headers = ["id", "company_name", "contact_name", "email", "phone", "city", "country", "industry", "status", "payment_volume", "created_at"];
+    if (withActivities) headers.push("last_activity_type", "last_activity_date");
+
+    const rows = allCustomers.map((c) => {
+      const row: string[] = [
+        String(c.id),
+        csvEscape(c.companyName),
+        csvEscape(c.contactName),
+        csvEscape(c.email ?? ""),
+        csvEscape(c.phone ?? ""),
+        csvEscape(c.city ?? ""),
+        csvEscape(c.country ?? ""),
+        csvEscape(c.industry ?? ""),
+        c.status,
+        String(c.paymentVolume ?? ""),
+        c.createdAt,
+      ];
+      if (withActivities) {
+        const custActs = allActivities.filter((a) => a.customerId === c.id).sort((a, b) =>
+          (b.createdAt ?? "") > (a.createdAt ?? "") ? 1 : -1
+        );
+        const last = custActs[0];
+        row.push(last?.type ?? "", last?.createdAt ?? "");
+      }
+      return row.join(",");
+    });
+
+    const csv = [headers.join(","), ...rows].join("\n");
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="kunden-export-${new Date().toISOString().slice(0, 10)}.csv"`);
+    res.send("\uFEFF" + csv); // BOM for Excel
+  });
+
+  app.post("/api/import/csv", upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "Keine Datei hochgeladen" });
+      const text = req.file.buffer.toString("utf-8").replace(/^\uFEFF/, ""); // strip BOM
+      const lines = text.split(/\r?\n/).filter((l) => l.trim());
+      if (lines.length < 2) return res.status(400).json({ message: "CSV leer oder nur Header" });
+
+      const headerLine = lines[0].toLowerCase();
+      const headers = headerLine.split(",").map((h) => h.trim().replace(/"/g, ""));
+
+      const getCol = (row: string[], name: string): string => {
+        const idx = headers.indexOf(name);
+        return idx >= 0 ? (row[idx] ?? "").replace(/^"|"$/g, "").trim() : "";
+      };
+
+      const results: { row: number; status: "imported" | "duplicate" | "error"; message?: string; data?: any }[] = [];
+      const existingCustomers = storage.getCustomers();
+
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        try {
+          const companyName = getCol(cols, "company_name") || getCol(cols, "firmenname");
+          const contactName = getCol(cols, "contact_name") || getCol(cols, "ansprechpartner");
+          const email = getCol(cols, "email");
+          const phone = getCol(cols, "phone") || getCol(cols, "telefon");
+          const city = getCol(cols, "city") || getCol(cols, "stadt");
+          const country = getCol(cols, "country") || getCol(cols, "land") || "Deutschland";
+          const industry = getCol(cols, "industry") || getCol(cols, "branche");
+          const status = (getCol(cols, "status") || "lead") as any;
+
+          if (!companyName || !contactName) {
+            results.push({ row: i + 1, status: "error", message: "Firmenname und Ansprechpartner sind Pflichtfelder" });
+            continue;
+          }
+
+          // Duplicate check
+          const isDuplicate = existingCustomers.some((c) =>
+            (email && c.email && c.email.toLowerCase() === email.toLowerCase()) ||
+            (phone && c.phone && c.phone.replace(/\s/g, "") === phone.replace(/\s/g, ""))
+          );
+
+          if (isDuplicate) {
+            results.push({ row: i + 1, status: "duplicate", message: `Duplikat gefunden (Email/Telefon bereits vorhanden)` });
+            continue;
+          }
+
+          const customer = storage.createCustomer({ companyName, contactName, email: email || undefined, phone: phone || undefined, city: city || undefined, country, industry: industry || undefined, status });
+          existingCustomers.push(customer);
+          results.push({ row: i + 1, status: "imported", data: customer });
+        } catch (err: any) {
+          results.push({ row: i + 1, status: "error", message: err.message });
+        }
+      }
+
+      const imported = results.filter((r) => r.status === "imported").length;
+      const duplicates = results.filter((r) => r.status === "duplicate").length;
+      const errors = results.filter((r) => r.status === "error").length;
+      res.json({ imported, duplicates, errors, results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── Duplicate Detection ───────────────────────────────────────────────────
+  app.post("/api/duplicates/check", (req, res) => {
+    const allCustomers = storage.getCustomers();
+    const duplicates: { type: string; customers: any[] }[] = [];
+
+    // Email duplicates
+    const byEmail: Record<string, typeof allCustomers> = {};
+    for (const c of allCustomers) {
+      if (c.email) {
+        const key = c.email.toLowerCase();
+        if (!byEmail[key]) byEmail[key] = [];
+        byEmail[key].push(c);
+      }
+    }
+    for (const [, group] of Object.entries(byEmail)) {
+      if (group.length > 1) duplicates.push({ type: "email", customers: group });
+    }
+
+    // Phone duplicates
+    const byPhone: Record<string, typeof allCustomers> = {};
+    for (const c of allCustomers) {
+      if (c.phone) {
+        const key = c.phone.replace(/[\s\-\(\)]/g, "");
+        if (!byPhone[key]) byPhone[key] = [];
+        byPhone[key].push(c);
+      }
+    }
+    for (const [, group] of Object.entries(byPhone)) {
+      if (group.length > 1) {
+        const alreadyFound = duplicates.some((d) => d.customers.some((dc) => group.some((g) => g.id === dc.id)));
+        if (!alreadyFound) duplicates.push({ type: "phone", customers: group });
+      }
+    }
+
+    // Fuzzy company name duplicates (simple: normalize and compare)
+    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, " ").replace(/gmbh|ag|e\.k\.|kg|ohg|ug/gi, "").trim();
+    const byName: Record<string, typeof allCustomers> = {};
+    for (const c of allCustomers) {
+      const key = normalize(c.companyName);
+      if (!byName[key]) byName[key] = [];
+      byName[key].push(c);
+    }
+    for (const [, group] of Object.entries(byName)) {
+      if (group.length > 1) {
+        const alreadyFound = duplicates.some((d) => d.customers.some((dc) => group.some((g) => g.id === dc.id)));
+        if (!alreadyFound) duplicates.push({ type: "company_name", customers: group });
+      }
+    }
+
+    res.json({ duplicates, total: duplicates.length });
+  });
+
+  app.post("/api/duplicates/merge", (req, res) => {
+    const { keepId, mergeId } = req.body;
+    if (!keepId || !mergeId) return res.status(400).json({ message: "keepId und mergeId erforderlich" });
+
+    const keep = storage.getCustomer(Number(keepId));
+    const merge = storage.getCustomer(Number(mergeId));
+    if (!keep || !merge) return res.status(404).json({ message: "Kunde nicht gefunden" });
+
+    // Move all activities from mergeId to keepId
+    const mergeActivities = storage.getActivities(Number(mergeId));
+    for (const a of mergeActivities) {
+      storage.updateActivity(a.id, { customerId: Number(keepId) } as any);
+    }
+
+    // Move all notes from mergeId to keepId
+    const mergeNotes = storage.getNotes(Number(mergeId));
+    for (const n of mergeNotes) {
+      storage.updateNote(n.id, { customerId: Number(keepId) });
+    }
+
+    // Delete the merged customer record directly (activities/notes already moved)
+    // Use db directly to avoid cascade-deleting the moved records
+    db.delete(customers).where(eq(customers.id, Number(mergeId))).run();
+
+    // Update last_activity_date on kept customer
+    storage.updateCustomer(Number(keepId), { lastActivityDate: new Date().toISOString() });
+
+    res.json({ success: true, kept: storage.getCustomer(Number(keepId)) });
+  });
+
   return httpServer;
+}
+
+// ── CSV helpers ──────────────────────────────────────────────────────────────
+function csvEscape(val: string): string {
+  if (val.includes(",") || val.includes('"') || val.includes("\n")) {
+    return `"${val.replace(/"/g, '""')}"`;
+  }
+  return val;
+}
+
+function parseCSVLine(line: string): string[] {
+  const result: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') { current += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === "," && !inQuotes) {
+      result.push(current);
+      current = "";
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
 }

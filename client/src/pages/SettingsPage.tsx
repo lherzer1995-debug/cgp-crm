@@ -3,9 +3,13 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CheckCircle2, XCircle, Calendar, Loader2, LogOut, ExternalLink } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { CheckCircle2, XCircle, Calendar, Loader2, LogOut, ExternalLink, FileText, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { queryClient, apiRequest, API_BASE } from "@/lib/queryClient";
+import type { NoteTemplate } from "@shared/schema";
 
 interface GCalStatus {
   connected: boolean;
@@ -31,6 +35,23 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
 export default function SettingsPage() {
   const [location] = useLocation();
   const [flashMessage, setFlashMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
+  const [templateForm, setTemplateForm] = useState({ name: "", content: "" });
+
+  // Note Templates
+  const { data: templates = [] } = useQuery<NoteTemplate[]>({
+    queryKey: ["/api/note-templates"],
+  });
+  const createTemplate = useMutation({
+    mutationFn: (data: { name: string; content: string }) => apiRequest("POST", "/api/note-templates", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/note-templates"] });
+      setTemplateForm({ name: "", content: "" });
+    },
+  });
+  const deleteTemplate = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/note-templates/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/note-templates"] }),
+  });
 
   // Parse ?gcal= query param from the hash-based URL after OAuth redirect
   useEffect(() => {
@@ -190,6 +211,78 @@ export default function SettingsPage() {
               </Button>
             </>
           )}
+        </CardContent>
+      </Card>
+
+      {/* Note Templates */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <FileText className="w-4 h-4 text-primary" />
+            Notiz-Templates
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Erstelle wiederverwendbare Templates für häufige Notiz-Typen (z.B. Demo-Notiz, Angebot-Notiz).
+          </p>
+
+          {/* Existing templates */}
+          {templates.length > 0 && (
+            <div className="space-y-2">
+              {templates.map((t) => (
+                <div key={t.id} className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/40 border border-border">
+                  <FileText className="w-4 h-4 text-muted-foreground shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-foreground">{t.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">{t.content.replace(/<[^>]+>/g, " ").slice(0, 80)}…</p>
+                  </div>
+                  <Button
+                    variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                    onClick={() => deleteTemplate.mutate(t.id)}
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Create new template */}
+          <div className="space-y-3 pt-2 border-t border-border">
+            <p className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Neues Template</p>
+            <div className="space-y-1.5">
+              <Label htmlFor="tpl-name">Name</Label>
+              <Input
+                id="tpl-name"
+                value={templateForm.name}
+                onChange={(e) => setTemplateForm((f) => ({ ...f, name: e.target.value }))}
+                placeholder="z.B. Demo-Notiz"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="tpl-content">Inhalt (HTML oder Text)</Label>
+              <Textarea
+                id="tpl-content"
+                rows={4}
+                value={templateForm.content}
+                onChange={(e) => setTemplateForm((f) => ({ ...f, content: e.target.value }))}
+                placeholder="Template-Inhalt…"
+              />
+            </div>
+            <Button
+              size="sm"
+              className="gap-2 min-h-[40px]"
+              onClick={() => {
+                if (!templateForm.name.trim() || !templateForm.content.trim()) return;
+                createTemplate.mutate(templateForm);
+              }}
+              disabled={createTemplate.isPending || !templateForm.name.trim() || !templateForm.content.trim()}
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Template erstellen
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

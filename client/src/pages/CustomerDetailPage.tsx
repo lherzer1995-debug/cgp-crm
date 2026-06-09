@@ -25,7 +25,8 @@ import {
   Plus, Trash2, CheckSquare, Square, Calendar, FileText, Pencil, Loader2, Sparkles, CalendarCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Customer, Note, Activity, InsertNote, InsertActivity } from "@shared/schema";
+import type { Customer, Note, Activity, InsertNote, InsertActivity, NoteTemplate } from "@shared/schema";
+import NoteEditor from "@/components/NoteEditor";
 
 const STATUS_LABEL: Record<string, string> = {
   lead: "Lead", prospect: "Prospect", active: "Aktiv", churned: "Abgewandert",
@@ -101,6 +102,9 @@ export default function CustomerDetailPage() {
       const r = await apiRequest("GET", `/api/customers/${custId}/notes`);
       return r.json();
     },
+  });
+  const { data: templates = [] } = useQuery<NoteTemplate[]>({
+    queryKey: ["/api/note-templates"],
   });
   const { data: activities = [], isLoading: aLoad } = useQuery<Activity[]>({
     queryKey: ["/api/customers", custId, "activities"],
@@ -418,16 +422,25 @@ export default function CustomerDetailPage() {
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1.5">
+                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                             <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
                               {NOTE_TYPES[n.type] ?? n.type}
                             </span>
                             <span className="text-[10px] text-muted-foreground">
                               {new Date(n.createdAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
                             </span>
+                            {n.updatedAt && n.updatedAt !== n.createdAt && (
+                              <span className="text-[10px] text-muted-foreground/60">
+                                · bearbeitet {new Date(n.updatedAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short" })}
+                              </span>
+                            )}
                           </div>
                           <p className="text-sm font-semibold text-foreground">{n.title}</p>
-                          <p className="text-sm text-muted-foreground mt-1 whitespace-pre-wrap">{n.content}</p>
+                          {/* Render rich-text HTML content */}
+                          <div
+                            className="text-sm text-muted-foreground mt-1 prose prose-sm dark:prose-invert max-w-none [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-primary [&_a]:underline"
+                            dangerouslySetInnerHTML={{ __html: n.content }}
+                          />
                         </div>
                         <Button
                           variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
@@ -564,34 +577,23 @@ export default function CustomerDetailPage() {
 
       {/* Note Dialog */}
       <Dialog open={noteDialog} onOpenChange={setNoteDialog}>
-        <DialogContent>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FileText className="w-4 h-4" /> Neue Notiz
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 pt-2">
-            <div className="space-y-1.5">
-              <Label>Typ</Label>
-              <Select value={noteForm.type} onValueChange={(v) => setNoteForm((f) => ({ ...f, type: v as any }))}>
-                <SelectTrigger data-testid="select-note-type"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(NOTE_TYPES).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="n-title">Titel</Label>
-              <Input id="n-title" value={noteForm.title} onChange={(e) => setNoteForm((f) => ({ ...f, title: e.target.value }))}
-                placeholder="Kurzer Titel" data-testid="input-note-title" />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="n-content">Inhalt</Label>
-              <Textarea id="n-content" rows={4} value={noteForm.content}
-                onChange={(e) => setNoteForm((f) => ({ ...f, content: e.target.value }))}
-                placeholder="Notiz, Gesprächsprotokoll, Informationen…" data-testid="textarea-note-content" />
-            </div>
-            <div className="flex gap-3 justify-end pt-1">
+          <div className="pt-2">
+            <NoteEditor
+              title={noteForm.title ?? ""}
+              content={noteForm.content ?? ""}
+              type={noteForm.type ?? "note"}
+              onTitleChange={(v) => setNoteForm((f) => ({ ...f, title: v }))}
+              onContentChange={(v) => setNoteForm((f) => ({ ...f, content: v }))}
+              onTypeChange={(v) => setNoteForm((f) => ({ ...f, type: v as any }))}
+              templates={templates}
+            />
+            <div className="flex gap-3 justify-end pt-4 mt-2 border-t border-border">
               <Button variant="outline" onClick={() => setNoteDialog(false)}>Abbrechen</Button>
               <Button
                 onClick={() => {
