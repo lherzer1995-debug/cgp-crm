@@ -10,6 +10,8 @@ import CustomerDetailPage from "@/pages/CustomerDetailPage";
 import DashboardPage from "@/pages/DashboardPage";
 import ActivitiesPage from "@/pages/ActivitiesPage";
 import SettingsPage from "@/pages/SettingsPage";
+import AnalyticsPage from "@/pages/Analytics";
+import DataManagementPage from "@/pages/DataManagement";
 import NotFound from "@/pages/not-found";
 import { useEffect, useState } from "react";
 import { Calendar, Loader2, ExternalLink } from "lucide-react";
@@ -152,6 +154,8 @@ function CRMApp() {
           <Route path="/customers" component={CustomersPage} />
           <Route path="/customers/:id" component={CustomerDetailPage} />
           <Route path="/activities" component={ActivitiesPage} />
+          <Route path="/analytics" component={AnalyticsPage} />
+          <Route path="/data-management" component={DataManagementPage} />
           <Route path="/settings" component={SettingsPage} />
           <Route component={NotFound} />
         </Switch>

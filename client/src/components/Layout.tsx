@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, Users, Activity, Menu, X, Sun, Moon, Settings, CalendarClock, Search,
+  BarChart2, Database,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Activity as ActivityType } from "@shared/schema";
@@ -13,6 +14,8 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/customers", label: "Kunden", icon: Users },
   { href: "/activities", label: "Aufgaben", icon: Activity },
+  { href: "/analytics", label: "Analytics", icon: BarChart2 },
+  { href: "/data-management", label: "Daten", icon: Database },
   { href: "/settings", label: "Einstellungen", icon: Settings },
 ];
 
