@@ -195,6 +195,7 @@ export const activities = sqliteTable("activities", {
   calendarEventId: text("calendar_event_id"), // Google Calendar event ID once synced
   done: integer("done", { mode: "boolean" }).notNull().default(false),
   completedAt: text("completed_at"),  // ISO timestamp when marked done (for sales cycle calc)
+  repeatDate: text("repeat_date"),    // ISO date for Wiedervorlage (optional)
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
 
@@ -204,3 +205,24 @@ export const insertActivitySchema = createInsertSchema(activities).omit({
 });
 export type InsertActivity = z.infer<typeof insertActivitySchema>;
 export type Activity = typeof activities.$inferSelect;
+
+// ── Support Tickets ────────────────────────────────────────────────────────
+export const supportTickets = sqliteTable("support_tickets", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  customerId: integer("customer_id").notNull(),
+  title: text("title").notNull(),
+  description: text("description").notNull().default(""),
+  status: text("status").notNull().default("open"), // open | in_progress | resolved | closed
+  priority: text("priority").notNull().default("medium"), // low | medium | high
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+  resolvedAt: text("resolved_at"),
+});
+
+export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;
+export type SupportTicket = typeof supportTickets.$inferSelect;

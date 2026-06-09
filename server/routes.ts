@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
 import { storage } from "./storage";
-import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema, updateSettingsSchema, insertCommissionSchema, insertActivityTemplateSchema, insertReminderSchema } from "@shared/schema";
+import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema, updateSettingsSchema, insertCommissionSchema, insertActivityTemplateSchema, insertReminderSchema, insertSupportTicketSchema } from "@shared/schema";
 import multer from "multer";
 import mammoth from "mammoth";
 import fs from "fs";
@@ -52,7 +52,7 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
 import { syncActivityToCalendar, gcalConfigured } from "./gcalDirect";
 import { registerOAuthRoutes, getStoredToken } from "./oauth";
 import { parseGermanDateTime } from "./dateParser";
-import { summarizeCustomerNotes } from "./ai";
+import { summarizeCustomerNotes, generateVisitReport, extractTodosFromReport } from "./ai";
 import { checkContractRenewals } from "./cron";
 
 
@@ -261,6 +261,22 @@ export function registerRoutes(httpServer: Server, app: Express) {
   // ── Customers ─────────────────────────────────────────────────────────────
   app.get("/api/customers", (_req, res) => {
     res.json(storage.getCustomers());
+  });
+
+  // ── Map Data (must be before /:id to avoid route conflict) ──────────────
+  app.get("/api/customers/map-data", (_req, res) => {
+    const allCustomers = storage.getCustomers();
+    const mapData = allCustomers.map((c) => ({
+      id: c.id,
+      companyName: c.companyName,
+      contactName: c.contactName,
+      city: c.city,
+      country: c.country,
+      industry: c.industry,
+      lastActivityDate: c.lastActivityDate,
+      contractEnd: c.contractEnd,
+    }));
+    res.json(mapData);
   });
 
   app.get("/api/customers/:id", (req, res) => {
@@ -859,6 +875,145 @@ export function registerRoutes(httpServer: Server, app: Express) {
     const reminder = storage.getReminder(Number(req.params.id));
     if (!reminder) return res.status(404).json({ message: "Wiedervorlage nicht gefunden" });
     storage.deleteReminder(Number(req.params.id));
+    res.status(204).end();
+  });
+
+  // ── Dashboard Today (Tagescockpit) ────────────────────────────────────────
+  app.get("/api/dashboard/today", (_req, res) => {
+    const today = new Date().toISOString().split("T")[0];
+    const allActivities = storage.getAllActivities();
+    const allReminders = storage.getReminders();
+    const allCommissions = storage.getCommissions();
+
+    const openTasks = allActivities.filter((a) => !a.done).length;
+    const overdueTasks = allActivities.filter((a) => {
+      if (a.done || !a.dueDate) return false;
+      return a.dueDate < today;
+    }).length;
+    const todayTasks = allActivities.filter((a) => !a.done && a.dueDate === today).length;
+    const weekEnd = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+    const weekTasks = allActivities.filter((a) => !a.done && a.dueDate && a.dueDate >= today && a.dueDate <= weekEnd).length;
+    const todayReminders = allReminders.filter((r) => r.dueDate === today && r.status !== "done").length;
+    const commissionsToday = allCommissions.filter((c) => c.date === today).reduce((s, c) => s + c.amount, 0);
+
+    // Customers contacted today (activities created today)
+    const customersContactedToday = new Set(
+      allActivities.filter((a) => (a.createdAt ?? "").startsWith(today)).map((a) => a.customerId)
+    ).size;
+
+    res.json({
+      openTasks,
+      overdueTasks,
+      todayTasks,
+      weekTasks,
+      todayReminders,
+      commissionsToday,
+      customersContactedToday,
+    });
+  });
+
+  // ── Customer Timeline (Interaktionshistorie) ──────────────────────────────
+  app.get("/api/customers/:id/timeline", (req, res) => {
+    const customerId = Number(req.params.id);
+    const customer = storage.getCustomer(customerId);
+    if (!customer) return res.status(404).json({ message: "Kunde nicht gefunden" });
+
+    const notes = storage.getNotes(customerId);
+    const acts = storage.getActivities(customerId);
+
+    const timeline: any[] = [
+      ...notes.map((n) => ({
+        id: `note-${n.id}`,
+        type: "note",
+        subtype: n.type,
+        title: n.title,
+        description: n.content.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, 200),
+        date: n.createdAt,
+        status: null,
+      })),
+      ...acts.map((a) => ({
+        id: `activity-${a.id}`,
+        type: "activity",
+        subtype: a.type,
+        title: a.description,
+        description: null,
+        date: a.dueDate ?? a.createdAt,
+        status: a.done ? "done" : "open",
+      })),
+    ].sort((a, b) => (b.date > a.date ? 1 : -1));
+
+    res.json(timeline);
+  });
+
+  // ── KI-Besuchsbericht ─────────────────────────────────────────────────────
+  app.post("/api/customers/:id/visit-report", async (req, res) => {
+    try {
+      const customerId = Number(req.params.id);
+      const customer = storage.getCustomer(customerId);
+      if (!customer) return res.status(404).json({ message: "Kunde nicht gefunden" });
+      const { visitNotes } = req.body;
+      if (!visitNotes?.trim()) return res.status(400).json({ message: "Besuchsnotizen erforderlich" });
+      const report = await generateVisitReport(customerId, visitNotes);
+      res.json({ report });
+    } catch (err: any) {
+      console.error("[AI] Besuchsbericht Fehler:", err);
+      res.status(500).json({ message: err.message || "Fehler bei der KI-Analyse" });
+    }
+  });
+
+  // ── To-do-Extraktion aus Besuchsbericht ───────────────────────────────────
+  app.post("/api/customers/:id/extract-todos", async (req, res) => {
+    try {
+      const customerId = Number(req.params.id);
+      const customer = storage.getCustomer(customerId);
+      if (!customer) return res.status(404).json({ message: "Kunde nicht gefunden" });
+      const { report } = req.body;
+      if (!report?.trim()) return res.status(400).json({ message: "Bericht erforderlich" });
+      const todos = await extractTodosFromReport(customerId, report);
+      res.json({ todos, count: todos.length });
+    } catch (err: any) {
+      console.error("[AI] To-do-Extraktion Fehler:", err);
+      res.status(500).json({ message: err.message || "Fehler bei der To-do-Extraktion" });
+    }
+  });
+
+  // ── Support Tickets ───────────────────────────────────────────────────────
+  app.get("/api/customers/:id/tickets", (req, res) => {
+    const customerId = Number(req.params.id);
+    const customer = storage.getCustomer(customerId);
+    if (!customer) return res.status(404).json({ message: "Kunde nicht gefunden" });
+    res.json(storage.getSupportTickets(customerId));
+  });
+
+  app.post("/api/customers/:id/tickets", (req, res) => {
+    const customerId = Number(req.params.id);
+    const customer = storage.getCustomer(customerId);
+    if (!customer) return res.status(404).json({ message: "Kunde nicht gefunden" });
+    const result = insertSupportTicketSchema.safeParse({ ...req.body, customerId });
+    if (!result.success) return res.status(400).json({ message: result.error.message });
+    const ticket = storage.createSupportTicket(result.data);
+    res.status(201).json(ticket);
+  });
+
+  app.patch("/api/customers/:id/tickets/:ticketId", (req, res) => {
+    const ticketId = Number(req.params.ticketId);
+    const partial = insertSupportTicketSchema.partial().safeParse(req.body);
+    if (!partial.success) return res.status(400).json({ message: partial.error.message });
+    // If resolving, set resolvedAt
+    const updateData: any = { ...partial.data };
+    if (partial.data.status === "resolved" || partial.data.status === "closed") {
+      updateData.resolvedAt = new Date().toISOString();
+    }
+    const ticket = storage.updateSupportTicket(ticketId, updateData);
+    if (!ticket) return res.status(404).json({ message: "Ticket nicht gefunden" });
+    res.json(ticket);
+  });
+
+  app.delete("/api/customers/:id/tickets/:ticketId", (req, res) => {
+    const ticketId = Number(req.params.ticketId);
+    const ticket = storage.getSupportTicket(ticketId);
+    if (!ticket) return res.status(404).json({ message: "Ticket nicht gefunden" });
+    storage.deleteSupportTicket(ticketId);
     res.status(204).end();
   });
 

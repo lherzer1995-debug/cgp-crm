@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Textarea } from "@/components/ui/textarea";
 
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -23,15 +24,18 @@ import {
   ArrowLeft, Phone, Mail, MapPin, Building2, Euro, CreditCard,
   Plus, Trash2, CheckSquare, Calendar, FileText, Loader2, Sparkles, CalendarCheck,
   TrendingUp, Copy, RefreshCw, Settings2, AlertTriangle, CheckCircle2, Clock, Bell, Check,
-  Monitor, Pencil,
+  Monitor, Pencil, Navigation, History, Ticket, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Customer, Note, Activity, InsertNote, InsertActivity, NoteTemplate, Commission, Reminder } from "@shared/schema";
+import type { Customer, Note, Activity, InsertNote, InsertActivity, NoteTemplate, Commission, Reminder, SupportTicket } from "@shared/schema";
 import NoteEditor from "@/components/NoteEditor";
 import CommissionDialog from "@/components/CommissionDialog";
 import ReminderDialog from "@/components/ReminderDialog";
 import TerminalDialog from "@/components/TerminalDialog";
 import ContractCard from "@/components/ContractCard";
+import QuickActivityDialog from "@/components/QuickActivityDialog";
+import SupportTicketDialog from "@/components/SupportTicketDialog";
+import { openPhone, openEmail, openMaps } from "@/lib/mobileActions";
 import {
   parseTerminals, terminalStatusLabel, terminalStatusClass,
   calculateContractEnd, calculateCancellationDeadline, getDaysUntilEnd,
@@ -119,6 +123,26 @@ export default function CustomerDetailPage() {
   const [aiError, setAiError] = useState("");
   const [copied, setCopied] = useState(false);
 
+  // Quick Activity Dialog
+  const [quickDialogOpen, setQuickDialogOpen] = useState(false);
+  const [quickDialogType, setQuickDialogType] = useState<"call" | "email" | "note">("call");
+
+  // KI-Besuchsbericht
+  const [visitNotes, setVisitNotes] = useState("");
+  const [visitReport, setVisitReport] = useState("");
+  const [visitReportLoading, setVisitReportLoading] = useState(false);
+  const [visitReportError, setVisitReportError] = useState("");
+  const [visitReportCopied, setVisitReportCopied] = useState(false);
+  const [todosExtracting, setTodosExtracting] = useState(false);
+
+  // Support Tickets
+  const [ticketDialogOpen, setTicketDialogOpen] = useState(false);
+  const [editTicket, setEditTicket] = useState<SupportTicket | null>(null);
+  const [deleteTicketId, setDeleteTicketId] = useState<number | null>(null);
+
+  // Timeline
+  const [timelineExpanded, setTimelineExpanded] = useState(false);
+
   // Forms
   const [noteForm, setNoteForm] = useState<Partial<InsertNote>>({ title: "", content: "", type: "note" });
   const [actForm, setActForm] = useState<Partial<InsertActivity>>({ type: "call", description: "", dueDate: "", done: false });
@@ -166,6 +190,31 @@ export default function CustomerDetailPage() {
     queryKey: ["/api/customers", custId, "reminders"],
     queryFn: async () => {
       const r = await apiRequest("GET", `/api/customers/${custId}/reminders`);
+      return r.json();
+    },
+  });
+
+  const { data: supportTickets = [] } = useQuery<SupportTicket[]>({
+    queryKey: ["/api/customers", custId, "tickets"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/customers/${custId}/tickets`);
+      return r.json();
+    },
+  });
+
+  type TimelineItem = {
+    id: string;
+    type: "note" | "activity";
+    subtype: string;
+    title: string;
+    description: string | null;
+    date: string;
+    status: string | null;
+  };
+  const { data: timeline = [] } = useQuery<TimelineItem[]>({
+    queryKey: ["/api/customers", custId, "timeline"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", `/api/customers/${custId}/timeline`);
       return r.json();
     },
   });
@@ -359,6 +408,15 @@ export default function CustomerDetailPage() {
     }
   };
 
+  // Mutations — Support Tickets
+  const deleteTicketMutation = useMutation({
+    mutationFn: (tid: number) => apiRequest("DELETE", `/api/customers/${custId}/tickets/${tid}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId, "tickets"] });
+      setDeleteTicketId(null);
+    },
+  });
+
   const fetchAiSummary = async () => {
     setAiLoading(true);
     setAiError("");
@@ -371,6 +429,55 @@ export default function CustomerDetailPage() {
       setAiError(err.message || "Fehler bei der KI-Zusammenfassung");
     } finally {
       setAiLoading(false);
+    }
+  };
+
+  const generateVisitReportHandler = async () => {
+    if (!visitNotes.trim()) {
+      toast({ title: "Bitte Besuchsnotizen eingeben", variant: "destructive" });
+      return;
+    }
+    setVisitReportLoading(true);
+    setVisitReportError("");
+    setVisitReport("");
+    try {
+      const r = await apiRequest("POST", `/api/customers/${custId}/visit-report`, { visitNotes });
+      const data = await r.json();
+      setVisitReport(data.report);
+    } catch (err: any) {
+      setVisitReportError(err.message || "Fehler bei der KI-Analyse");
+    } finally {
+      setVisitReportLoading(false);
+    }
+  };
+
+  const extractTodosHandler = async () => {
+    if (!visitReport.trim()) {
+      toast({ title: "Bitte zuerst Bericht generieren", variant: "destructive" });
+      return;
+    }
+    setTodosExtracting(true);
+    try {
+      const r = await apiRequest("POST", `/api/customers/${custId}/extract-todos`, { report: visitReport });
+      const data = await r.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/customers", custId, "activities"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/activities"] });
+      toast({ title: `${data.count} To-dos erstellt ✓`, description: "Aufgaben wurden aus dem Bericht extrahiert." });
+    } catch (err: any) {
+      toast({ title: "Fehler", description: err.message, variant: "destructive" });
+    } finally {
+      setTodosExtracting(false);
+    }
+  };
+
+  const copyVisitReport = async () => {
+    if (!visitReport) return;
+    try {
+      await navigator.clipboard.writeText(visitReport);
+      setVisitReportCopied(true);
+      setTimeout(() => setVisitReportCopied(false), 2000);
+    } catch {
+      toast({ title: "Kopieren fehlgeschlagen", variant: "destructive" });
     }
   };
 
@@ -474,6 +581,163 @@ export default function CustomerDetailPage() {
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* ── 1-Tap Mobile Actions ── */}
+      {(customer.phone || customer.email || customer.city) && (
+        <Card className="overflow-hidden">
+          <div className="h-1 bg-green-500" />
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2 mb-3">
+              <Navigation className="w-4 h-4 text-green-600" />
+              <span className="text-sm font-semibold text-foreground">Schnellaktionen</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 sm:flex sm:gap-3">
+              {customer.phone && (
+                <Button
+                  className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white h-12 text-sm font-semibold"
+                  onClick={() => openPhone(customer.phone!)}
+                >
+                  <Phone className="w-4 h-4" />
+                  <span className="hidden sm:inline">Anrufen</span>
+                  <span className="sm:hidden text-xs">Anruf</span>
+                </Button>
+              )}
+              {customer.email && (
+                <Button
+                  className="flex-1 gap-2 bg-blue-600 hover:bg-blue-700 text-white h-12 text-sm font-semibold"
+                  onClick={() => openEmail(customer.email!, `Betreff: ${customer.companyName}`)}
+                >
+                  <Mail className="w-4 h-4" />
+                  <span className="hidden sm:inline">E-Mail</span>
+                  <span className="sm:hidden text-xs">Mail</span>
+                </Button>
+              )}
+              {customer.city && (
+                <Button
+                  className="flex-1 gap-2 bg-orange-500 hover:bg-orange-600 text-white h-12 text-sm font-semibold"
+                  onClick={() => openMaps("", customer.city, customer.country)}
+                >
+                  <MapPin className="w-4 h-4" />
+                  <span className="hidden sm:inline">Route</span>
+                  <span className="sm:hidden text-xs">Route</span>
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── Interaktionshistorie ── */}
+      <Card className="overflow-hidden">
+        <div className="h-1 bg-indigo-500" />
+        <CardHeader className="pb-2 pt-4 px-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <History className="w-4 h-4 text-indigo-500" /> Interaktionshistorie
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5"
+                onClick={() => { setQuickDialogType("call"); setQuickDialogOpen(true); }}
+              >
+                <Phone className="w-3 h-3" /> Anruf
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5"
+                onClick={() => { setQuickDialogType("email"); setQuickDialogOpen(true); }}
+              >
+                <Mail className="w-3 h-3" /> Mail
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1.5"
+                onClick={() => { setQuickDialogType("note"); setQuickDialogOpen(true); }}
+              >
+                <FileText className="w-3 h-3" /> Notiz
+              </Button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          {timeline.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground">
+              <History className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
+              <p className="text-xs">Noch keine Interaktionen</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-2">
+                {(timelineExpanded ? timeline : timeline.slice(0, 5)).map((item) => {
+                  const isActivity = item.type === "activity";
+                  const typeLabel: Record<string, string> = {
+                    call: "Anruf", email: "E-Mail", meeting: "Meeting", follow_up: "Follow-up",
+                    note: "Notiz", renewal: "Verlängerung",
+                  };
+                  const typeColor: Record<string, string> = {
+                    call: "text-green-600 dark:text-green-400",
+                    email: "text-cyan-600 dark:text-cyan-400",
+                    meeting: "text-indigo-600 dark:text-indigo-400",
+                    follow_up: "text-amber-600 dark:text-amber-400",
+                    note: "text-muted-foreground",
+                    renewal: "text-orange-600 dark:text-orange-400",
+                  };
+                  return (
+                    <div key={item.id} className="flex items-start gap-3 px-3 py-2 rounded-lg bg-secondary/30 border border-border">
+                      <div className="shrink-0 mt-0.5">
+                        {isActivity ? (
+                          item.status === "done"
+                            ? <CheckCircle2 className="w-4 h-4 text-green-500" />
+                            : <Clock className="w-4 h-4 text-amber-500" />
+                        ) : (
+                          <FileText className="w-4 h-4 text-muted-foreground" />
+                        )}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className={cn("text-[10px] font-bold uppercase tracking-wide", typeColor[item.subtype] ?? "text-muted-foreground")}>
+                            {typeLabel[item.subtype] ?? item.subtype}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {new Date(item.date).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
+                          </span>
+                          {isActivity && item.status && (
+                            <span className={cn("text-[10px] font-semibold", item.status === "done" ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400")}>
+                              {item.status === "done" ? "Erledigt" : "Offen"}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm text-foreground truncate mt-0.5">{item.title}</p>
+                        {item.description && (
+                          <p className="text-xs text-muted-foreground truncate mt-0.5">{item.description}</p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              {timeline.length > 5 && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="w-full mt-2 h-7 text-xs gap-1.5 text-muted-foreground"
+                  onClick={() => setTimelineExpanded(!timelineExpanded)}
+                >
+                  {timelineExpanded ? (
+                    <><ChevronUp className="w-3 h-3" /> Weniger anzeigen</>
+                  ) : (
+                    <><ChevronDown className="w-3 h-3" /> Alle {timeline.length} Einträge anzeigen</>
+                  )}
+                </Button>
+              )}
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -1079,6 +1343,214 @@ export default function CustomerDetailPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* ── KI-Besuchsbericht ── */}
+      <Card className="overflow-hidden">
+        <div className="h-1 bg-violet-500" />
+        <CardHeader className="pb-2 pt-4 px-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-violet-500" /> KI-Besuchsbericht
+            </CardTitle>
+            {visitReport && (
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={copyVisitReport}
+                >
+                  {visitReportCopied ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                  {visitReportCopied ? "Kopiert!" : "Kopieren"}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 text-xs gap-1.5"
+                  onClick={extractTodosHandler}
+                  disabled={todosExtracting}
+                >
+                  {todosExtracting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckSquare className="w-3 h-3" />}
+                  To-dos erstellen
+                </Button>
+              </div>
+            )}
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 pb-4 space-y-3">
+          <div className="space-y-1.5">
+            <Label htmlFor="visit-notes">Besuchsnotizen</Label>
+            <Textarea
+              id="visit-notes"
+              value={visitNotes}
+              onChange={(e) => setVisitNotes(e.target.value)}
+              placeholder="Was wurde beim Besuch besprochen? Stichpunkte reichen…"
+              rows={4}
+              className="resize-none"
+            />
+          </div>
+          <Button
+            size="sm"
+            className="gap-1.5"
+            onClick={generateVisitReportHandler}
+            disabled={visitReportLoading || !visitNotes.trim()}
+          >
+            {visitReportLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+            {visitReportLoading ? "Generiere Bericht…" : "KI-Bericht generieren"}
+          </Button>
+          {visitReportError && (
+            <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+              <p>{visitReportError}</p>
+            </div>
+          )}
+          {visitReport && !visitReportLoading && (
+            <div className="p-3 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-200/50 dark:border-violet-800/30">
+              <pre className="text-sm text-foreground leading-relaxed whitespace-pre-wrap font-sans">{visitReport}</pre>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── Supportfälle ── */}
+      <Card className="overflow-hidden">
+        <div className="h-1 bg-red-500" />
+        <CardHeader className="pb-2 pt-4 px-4">
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Ticket className="w-4 h-4 text-red-500" /> Supportfälle
+              {supportTickets.filter((t) => t.status === "open" || t.status === "in_progress").length > 0 && (
+                <span className="flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-red-100 dark:bg-red-900/40 text-[10px] font-bold text-red-700 dark:text-red-300">
+                  {supportTickets.filter((t) => t.status === "open" || t.status === "in_progress").length}
+                </span>
+              )}
+            </CardTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-7 text-xs gap-1.5"
+              onClick={() => { setEditTicket(null); setTicketDialogOpen(true); }}
+            >
+              <Plus className="w-3 h-3" /> Neuer Supportfall
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          {supportTickets.length === 0 ? (
+            <div className="text-center py-6 text-muted-foreground">
+              <Ticket className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
+              <p className="text-xs">Keine Supportfälle für diesen Kunden</p>
+            </div>
+          ) : (
+            <div className="rounded-lg border border-border overflow-hidden">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-muted/40 border-b border-border">
+                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Titel</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground hidden sm:table-cell">Status</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground hidden sm:table-cell">Priorität</th>
+                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground hidden md:table-cell">Erstellt</th>
+                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground text-right">Aktionen</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {supportTickets.map((t, i) => {
+                    const statusConfig: Record<string, { label: string; color: string }> = {
+                      open: { label: "🟢 Offen", color: "text-green-600 dark:text-green-400" },
+                      in_progress: { label: "🟡 In Bearbeitung", color: "text-amber-600 dark:text-amber-400" },
+                      resolved: { label: "✅ Gelöst", color: "text-blue-600 dark:text-blue-400" },
+                      closed: { label: "⚫ Geschlossen", color: "text-muted-foreground" },
+                    };
+                    const priorityConfig: Record<string, { label: string; color: string }> = {
+                      high: { label: "🔴 Hoch", color: "text-red-600 dark:text-red-400" },
+                      medium: { label: "🟡 Mittel", color: "text-amber-600 dark:text-amber-400" },
+                      low: { label: "🟢 Niedrig", color: "text-green-600 dark:text-green-400" },
+                    };
+                    const sc = statusConfig[t.status] ?? { label: t.status, color: "" };
+                    const pc = priorityConfig[t.priority] ?? { label: t.priority, color: "" };
+                    return (
+                      <tr key={t.id} className={cn("border-b border-border last:border-0", i % 2 === 1 && "bg-muted/20")}>
+                        <td className="px-3 py-2">
+                          <p className="font-medium text-foreground text-sm">{t.title}</p>
+                          {t.description && (
+                            <p className="text-xs text-muted-foreground truncate max-w-[200px]">{t.description}</p>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 hidden sm:table-cell">
+                          <span className={cn("text-xs font-semibold", sc.color)}>{sc.label}</span>
+                        </td>
+                        <td className="px-3 py-2 hidden sm:table-cell">
+                          <span className={cn("text-xs font-semibold", pc.color)}>{pc.label}</span>
+                        </td>
+                        <td className="px-3 py-2 hidden md:table-cell">
+                          <span className="text-xs text-muted-foreground">
+                            {new Date(t.createdAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                              onClick={() => { setEditTicket(t); setTicketDialogOpen(true); }}
+                            >
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
+                              onClick={() => setDeleteTicketId(t.id)}
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Support Ticket Dialog */}
+      <SupportTicketDialog
+        open={ticketDialogOpen}
+        customerId={custId}
+        editTicket={editTicket}
+        onClose={() => { setTicketDialogOpen(false); setEditTicket(null); }}
+      />
+
+      {/* Delete Ticket */}
+      <AlertDialog open={deleteTicketId !== null} onOpenChange={(o) => !o && setDeleteTicketId(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Supportfall löschen?</AlertDialogTitle>
+            <AlertDialogDescription>Diese Aktion kann nicht rückgängig gemacht werden.</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => deleteTicketId && deleteTicketMutation.mutate(deleteTicketId)}
+            >
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Quick Activity Dialog */}
+      <QuickActivityDialog
+        open={quickDialogOpen}
+        type={quickDialogType}
+        customerId={custId}
+        onClose={() => setQuickDialogOpen(false)}
+      />
 
       {/* Commissions Card */}
       <Card>

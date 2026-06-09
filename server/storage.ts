@@ -2,7 +2,7 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import {
-  customers, notes, activities, attachments, noteTemplates, settings, commissions, activityTemplates, reminders,
+  customers, notes, activities, attachments, noteTemplates, settings, commissions, activityTemplates, reminders, supportTickets,
   type Customer, type InsertCustomer,
   type Note, type InsertNote,
   type Activity, type InsertActivity,
@@ -12,6 +12,7 @@ import {
   type Commission, type InsertCommission,
   type ActivityTemplate, type InsertActivityTemplate,
   type Reminder, type InsertReminder,
+  type SupportTicket, type InsertSupportTicket,
 } from "@shared/schema";
 
 // On Render: use persistent disk at /data/data.db, otherwise local data.db
@@ -122,6 +123,17 @@ sqlite.exec(`
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
     updated_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE TABLE IF NOT EXISTS support_tickets (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    customer_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    description TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'open',
+    priority TEXT NOT NULL DEFAULT 'medium',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+    resolved_at TEXT
+  );
 `);
 
 // Run migrations for existing databases (ALTER TABLE IF NOT EXISTS column)
@@ -131,6 +143,7 @@ runMigration("ALTER TABLE activities ADD COLUMN raw_date_text TEXT");
 runMigration("ALTER TABLE activities ADD COLUMN calendar_event_id TEXT");
 runMigration("ALTER TABLE activities ADD COLUMN completed_at TEXT");
 runMigration("ALTER TABLE activities ADD COLUMN priority TEXT NOT NULL DEFAULT 'medium'");
+runMigration("ALTER TABLE activities ADD COLUMN repeat_date TEXT");
 runMigration("ALTER TABLE customers ADD COLUMN last_activity_date TEXT");
 runMigration("ALTER TABLE notes ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'))");
 runMigration("ALTER TABLE settings ADD COLUMN advisor_name TEXT DEFAULT 'Lars Herzer'");
@@ -143,6 +156,8 @@ runMigration("ALTER TABLE customers ADD COLUMN default_volume REAL");
 runMigration("ALTER TABLE customers ADD COLUMN contract_term_months INTEGER");
 runMigration("ALTER TABLE customers ADD COLUMN cancellation_notice_days INTEGER");
 runMigration("ALTER TABLE customers ADD COLUMN terminals TEXT");
+// Phase 2B: support tickets table (already created above via CREATE TABLE IF NOT EXISTS)
+runMigration("ALTER TABLE support_tickets ADD COLUMN resolved_at TEXT");
 
 export interface IStorage {
   // Customers
@@ -195,6 +210,12 @@ export interface IStorage {
   createReminder(data: InsertReminder): Reminder;
   updateReminder(id: number, data: Partial<InsertReminder>): Reminder | undefined;
   deleteReminder(id: number): void;
+  // Support Tickets
+  getSupportTickets(customerId: number): SupportTicket[];
+  getSupportTicket(id: number): SupportTicket | undefined;
+  createSupportTicket(data: InsertSupportTicket): SupportTicket;
+  updateSupportTicket(id: number, data: Partial<InsertSupportTicket>): SupportTicket | undefined;
+  deleteSupportTicket(id: number): void;
 }
 
 class Storage implements IStorage {
@@ -407,6 +428,28 @@ class Storage implements IStorage {
   }
   deleteReminder(id: number): void {
     db.delete(reminders).where(eq(reminders.id, id)).run();
+  }
+
+  // ── Support Tickets ──────────────────────────────────────────────────────
+  getSupportTickets(customerId: number): SupportTicket[] {
+    return db.select().from(supportTickets).where(eq(supportTickets.customerId, customerId)).all()
+      .sort((a, b) => (b.createdAt > a.createdAt ? 1 : -1));
+  }
+  getSupportTicket(id: number): SupportTicket | undefined {
+    return db.select().from(supportTickets).where(eq(supportTickets.id, id)).get();
+  }
+  createSupportTicket(data: InsertSupportTicket): SupportTicket {
+    return db.insert(supportTickets).values(data).returning().get();
+  }
+  updateSupportTicket(id: number, data: Partial<InsertSupportTicket>): SupportTicket | undefined {
+    return db.update(supportTickets)
+      .set({ ...data, updatedAt: new Date().toISOString() })
+      .where(eq(supportTickets.id, id))
+      .returning()
+      .get();
+  }
+  deleteSupportTicket(id: number): void {
+    db.delete(supportTickets).where(eq(supportTickets.id, id)).run();
   }
 }
 

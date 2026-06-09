@@ -2,7 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -24,9 +24,12 @@ import {
   X,
   AlertTriangle,
   RefreshCw,
+  Bell,
+  Check,
+  Repeat,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Activity as ActivityType, Customer } from "@shared/schema";
+import type { Activity as ActivityType, Customer, Reminder } from "@shared/schema";
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -306,6 +309,27 @@ export default function TasksPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/activities"] }),
   });
 
+  type EnrichedReminder = Reminder & { customerName: string };
+  const { data: reminders = [] } = useQuery<EnrichedReminder[]>({
+    queryKey: ["/api/reminders/today"],
+    queryFn: async () => {
+      const r = await apiRequest("GET", "/api/reminders/today");
+      return r.json();
+    },
+  });
+
+  const snoozeReminder = useMutation({
+    mutationFn: ({ id, dueDate }: { id: number; dueDate: string }) =>
+      apiRequest("PATCH", `/api/reminders/${id}`, { dueDate, status: "pending" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/reminders/today"] }),
+  });
+
+  const doneReminder = useMutation({
+    mutationFn: (id: number) =>
+      apiRequest("PATCH", `/api/reminders/${id}`, { status: "done" }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/reminders/today"] }),
+  });
+
   // ── Derived stats ──────────────────────────────────────────────────────────
   const overdueCount = useMemo(
     () =>
@@ -457,6 +481,65 @@ export default function TasksPage() {
           </p>
         </div>
       </div>
+
+      {/* Wiedervorlagen */}
+      {reminders.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="h-1 bg-amber-400" />
+          <CardHeader className="pb-2 pt-4 px-4">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <Bell className="w-4 h-4 text-amber-500" />
+              Wiedervorlagen heute
+              <span className="flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                {reminders.length}
+              </span>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="px-4 pb-4">
+            <div className="space-y-2">
+              {reminders.map((r) => (
+                <div
+                  key={r.id}
+                  className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/40 dark:border-amber-800/30"
+                >
+                  <Bell className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <Link href={`/customers/${r.customerId}`}>
+                      <a className="text-[10px] font-semibold text-primary hover:underline">{r.customerName}</a>
+                    </Link>
+                    <p className="text-sm text-foreground truncate">{r.description}</p>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 px-2 text-xs gap-1 text-muted-foreground hover:text-foreground"
+                      title="Auf nächste Woche verschieben"
+                      onClick={() => {
+                        const nextWeek = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+                        snoozeReminder.mutate({ id: r.id, dueDate: nextWeek });
+                      }}
+                      disabled={snoozeReminder.isPending}
+                    >
+                      <Repeat className="w-3 h-3" />
+                      <span className="hidden sm:inline">+7d</span>
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="h-7 px-2 text-xs gap-1 bg-green-600 hover:bg-green-700 text-white"
+                      onClick={() => doneReminder.mutate(r.id)}
+                      disabled={doneReminder.isPending}
+                    >
+                      <Check className="w-3 h-3" />
+                      <span className="hidden sm:inline">Erledigt</span>
+                    </Button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Filters */}
       <div className="space-y-3">
