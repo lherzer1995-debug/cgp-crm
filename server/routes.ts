@@ -336,6 +336,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
     if (activity.dueDate && gcalConfigured()) {
       const customer = storage.getCustomer(activity.customerId);
       const companyName = customer?.companyName ?? "Kunde";
+      const contactName = customer?.contactName ?? "Kontakt";
       console.log(`[GCal] Triggering immediate sync for new activity ${activity.id} (customer: "${companyName}")`);
       syncActivityToCalendar(
         {
@@ -345,7 +346,8 @@ export function registerRoutes(httpServer: Server, app: Express) {
           dueDate: activity.dueDate,
           dueTime: activity.dueTime,
         },
-        companyName
+        companyName,
+        contactName
       ).then((eventId) => {
         storage.updateActivity(activity.id, { calendarEventId: eventId });
         console.log(`[GCal] Activity ${activity.id} linked to calendar event ${eventId}`);
