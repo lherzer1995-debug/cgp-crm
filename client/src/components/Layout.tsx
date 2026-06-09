@@ -4,7 +4,7 @@ import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, Users, Activity, Menu, X, Sun, Moon, Settings, CalendarClock, Search,
-  BarChart2, Database, ListChecks, TrendingUp, Bell,
+  BarChart2, Database, ListChecks, TrendingUp, Bell, MapPin,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { Activity as ActivityType, Reminder } from "@shared/schema";
@@ -21,6 +21,7 @@ const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/cockpit", label: "Tagescockpit", icon: Bell },
   { href: "/customers", label: "Kunden", icon: Users },
+  { href: "/map", label: "Karte", icon: MapPin },
   { href: "/tasks", label: "Aufgaben", icon: ListChecks },
   { href: "/activities", label: "Aktivitäten", icon: Activity },
   { href: "/commissions", label: "Provisionen", icon: TrendingUp },
