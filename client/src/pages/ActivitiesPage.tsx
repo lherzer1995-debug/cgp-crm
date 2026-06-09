@@ -5,7 +5,10 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { CheckSquare, Square, Calendar, ExternalLink, Activity, CalendarCheck } from "lucide-react";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import { CheckSquare, Square, Calendar, ExternalLink, Activity, CalendarCheck, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import CalendarWidget from "@/components/CalendarWidget";
 import type { Activity as ActivityType, Customer } from "@shared/schema";
@@ -17,6 +20,26 @@ const ACT_CLASS: Record<string, string> = {
   call: "act-call", follow_up: "act-follow_up",
   meeting: "text-indigo-600 dark:text-indigo-400", email: "text-cyan-600 dark:text-cyan-400",
 };
+
+type TypeFilter = "all" | "call" | "follow_up" | "meeting" | "email";
+type PriorityFilter = "all" | "low" | "medium" | "high";
+type StatusFilter = "open" | "done" | "all";
+
+const ACT_FILTER_STORAGE_KEY = "crm_activities_filters_v1";
+
+interface ActivityFilters {
+  typeFilter: TypeFilter;
+  priorityFilter: PriorityFilter;
+  statusFilter: StatusFilter;
+}
+
+function loadActivityFilters(): ActivityFilters {
+  try {
+    const raw = localStorage.getItem(ACT_FILTER_STORAGE_KEY);
+    if (raw) return JSON.parse(raw) as ActivityFilters;
+  } catch {}
+  return { typeFilter: "all", priorityFilter: "all", statusFilter: "open" };
+}
 
 function getGroup(dueDate?: string | null): "overdue" | "today" | "week" | "later" | "none" {
   if (!dueDate) return "none";
@@ -39,6 +62,26 @@ const GROUP_CONFIG = {
 
 export default function ActivitiesPage() {
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
+  const [filters, setFilters] = useState<ActivityFilters>(loadActivityFilters);
+
+  const updateFilter = <K extends keyof ActivityFilters>(key: K, value: ActivityFilters[K]) => {
+    setFilters((prev) => {
+      const next = { ...prev, [key]: value };
+      try { localStorage.setItem(ACT_FILTER_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  };
+
+  const hasActiveFilters =
+    filters.typeFilter !== "all" ||
+    filters.priorityFilter !== "all";
+
+  const clearFilters = () => {
+    const reset: ActivityFilters = { typeFilter: "all", priorityFilter: "all", statusFilter: "open" };
+    setFilters(reset);
+    try { localStorage.setItem(ACT_FILTER_STORAGE_KEY, JSON.stringify(reset)); } catch {}
+  };
+
   const { data: activities = [], isLoading: aLoad } = useQuery<ActivityType[]>({ queryKey: ["/api/activities"] });
   const { data: customers = [] } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
   const custMap = Object.fromEntries(customers.map((c) => [c.id, c]));
@@ -49,22 +92,33 @@ export default function ActivitiesPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/activities"] }),
   });
 
-  const allPending = activities
-    .filter((a) => !a.done)
-    .sort((a, b) => {
-      if (!a.dueDate && !b.dueDate) return 0;
-      if (!a.dueDate) return 1;
-      if (!b.dueDate) return -1;
-      return a.dueDate > b.dueDate ? 1 : -1;
-    });
+  // Apply filters
+  const applyFilters = (list: ActivityType[]) => list.filter((a) => {
+    if (filters.typeFilter !== "all" && a.type !== filters.typeFilter) return false;
+    if (filters.priorityFilter !== "all" && a.priority !== filters.priorityFilter) return false;
+    return true;
+  });
+
+  const allPending = applyFilters(
+    activities
+      .filter((a) => !a.done)
+      .sort((a, b) => {
+        if (!a.dueDate && !b.dueDate) return 0;
+        if (!a.dueDate) return 1;
+        if (!b.dueDate) return -1;
+        return a.dueDate > b.dueDate ? 1 : -1;
+      })
+  );
 
   const pending = selectedDate
     ? allPending.filter((a) => a.dueDate?.slice(0, 10) === selectedDate)
     : allPending;
 
-  const done = activities
-    .filter((a) => a.done && (!selectedDate || a.dueDate?.slice(0, 10) === selectedDate))
-    .sort((a, b) => ((b.createdAt ?? "") > (a.createdAt ?? "") ? 1 : -1));
+  const done = applyFilters(
+    activities
+      .filter((a) => a.done && (!selectedDate || a.dueDate?.slice(0, 10) === selectedDate))
+      .sort((a, b) => ((b.createdAt ?? "") > (a.createdAt ?? "") ? 1 : -1))
+  );
 
   // Gruppieren
   const groups: Record<string, ActivityType[]> = { overdue: [], today: [], week: [], later: [], none: [] };
@@ -156,15 +210,78 @@ export default function ActivitiesPage() {
 
   return (
     <div className="space-y-6 max-w-4xl">
-      <div className="flex items-start gap-3">
-        <div className="w-1 h-10 rounded-full bg-[#FFD100] shrink-0 mt-0.5" />
-        <div>
-          <h1 className="text-xl font-bold text-foreground">Aktivitäten</h1>
-          <p className="text-sm text-muted-foreground">
-            {allPending.length > 0 ? `${allPending.length} offen` : "Alles erledigt"}{done.length > 0 ? ` · ${done.length} erledigt` : ""}
-            {selectedDate ? ` · Gefiltert: ${new Date(selectedDate + "T00:00:00").toLocaleDateString("de-DE", { day: "2-digit", month: "short" })}` : ""}
-          </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div className="w-1 h-10 rounded-full bg-[#FFD100] shrink-0 mt-0.5" />
+          <div>
+            <h1 className="text-xl font-bold text-foreground">Aktivitäten</h1>
+            <p className="text-sm text-muted-foreground">
+              {allPending.length > 0 ? `${allPending.length} offen` : "Alles erledigt"}{done.length > 0 ? ` · ${done.length} erledigt` : ""}
+              {selectedDate ? ` · Gefiltert: ${new Date(selectedDate + "T00:00:00").toLocaleDateString("de-DE", { day: "2-digit", month: "short" })}` : ""}
+            </p>
+          </div>
         </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex flex-wrap gap-2 items-center">
+        {/* Status filter */}
+        <div className="flex rounded-lg border border-border overflow-hidden">
+          {(["open", "all", "done"] as StatusFilter[]).map((s) => (
+            <button
+              key={s}
+              onClick={() => updateFilter("statusFilter", s)}
+              className={cn(
+                "px-3 py-1.5 text-xs font-semibold transition-colors",
+                filters.statusFilter === s
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-muted"
+              )}
+            >
+              {s === "open" ? "Offen" : s === "done" ? "Erledigt" : "Alle"}
+            </button>
+          ))}
+        </div>
+
+        {/* Type filter */}
+        <Select value={filters.typeFilter} onValueChange={(v) => updateFilter("typeFilter", v as TypeFilter)}>
+          <SelectTrigger className="h-8 w-[130px] text-xs">
+            <SelectValue placeholder="Typ" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Alle Typen</SelectItem>
+            <SelectItem value="call">Anruf</SelectItem>
+            <SelectItem value="follow_up">Follow-up</SelectItem>
+            <SelectItem value="meeting">Meeting</SelectItem>
+            <SelectItem value="email">E-Mail</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Priority filter */}
+        <Select value={filters.priorityFilter} onValueChange={(v) => updateFilter("priorityFilter", v as PriorityFilter)}>
+          <SelectTrigger className="h-8 w-[130px] text-xs">
+            <SelectValue placeholder="Priorität" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Alle Prioritäten</SelectItem>
+            <SelectItem value="high">Hoch</SelectItem>
+            <SelectItem value="medium">Mittel</SelectItem>
+            <SelectItem value="low">Niedrig</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {/* Clear filters */}
+        {(hasActiveFilters || selectedDate) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { clearFilters(); setSelectedDate(null); }}
+            className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <X className="w-3 h-3" />
+            Zurücksetzen
+          </Button>
+        )}
       </div>
 
       {/* Calendar Widget */}
@@ -186,33 +303,44 @@ export default function ActivitiesPage() {
         </div>
       ) : (
         <>
-          {/* Gruppierte offene Aufgaben */}
-          {(["overdue", "today", "week", "later", "none"] as const).map((gKey) => {
-            const group = groups[gKey];
-            if (group.length === 0) return null;
-            const cfg = GROUP_CONFIG[gKey];
-            return (
-              <div key={gKey} className="space-y-2">
-                <div className="flex items-center gap-2">
-                  <div className={cn("w-2 h-2 rounded-full shrink-0", cfg.dot)} />
-                  <p className={cn("text-xs font-bold uppercase tracking-widest", cfg.color)}>
-                    {cfg.label} ({group.length})
-                  </p>
+          {/* Gruppierte offene Aufgaben — only when statusFilter is "open" or "all" */}
+          {(filters.statusFilter === "open" || filters.statusFilter === "all") && (
+            <>
+              {(["overdue", "today", "week", "later", "none"] as const).map((gKey) => {
+                const group = groups[gKey];
+                if (group.length === 0) return null;
+                const cfg = GROUP_CONFIG[gKey];
+                return (
+                  <div key={gKey} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <div className={cn("w-2 h-2 rounded-full shrink-0", cfg.dot)} />
+                      <p className={cn("text-xs font-bold uppercase tracking-widest", cfg.color)}>
+                        {cfg.label} ({group.length})
+                      </p>
+                    </div>
+                    {group.map((a) => <ActivityRow key={a.id} a={a} />)}
+                  </div>
+                );
+              })}
+              {pending.length === 0 && filters.statusFilter === "open" && (
+                <div className="text-center py-10 text-muted-foreground">
+                  <Activity className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                  <p className="text-sm font-medium">Keine offenen Aktivitäten</p>
+                  {hasActiveFilters && <p className="text-xs mt-1">Filter anpassen</p>}
                 </div>
-                {group.map((a) => <ActivityRow key={a.id} a={a} />)}
-              </div>
-            );
-          })}
+              )}
+            </>
+          )}
 
-          {/* Erledigte */}
-          {done.length > 0 && (
+          {/* Erledigte — only when statusFilter is "done" or "all" */}
+          {(filters.statusFilter === "done" || filters.statusFilter === "all") && done.length > 0 && (
             <div className="space-y-2">
               <p className="text-xs font-bold uppercase tracking-widest text-muted-foreground/60">
                 Erledigt ({done.length})
               </p>
-              {done.slice(0, 10).map((a) => <ActivityRow key={a.id} a={a} />)}
-              {done.length > 10 && (
-                <p className="text-xs text-center text-muted-foreground py-2">+ {done.length - 10} weitere</p>
+              {done.slice(0, 20).map((a) => <ActivityRow key={a.id} a={a} />)}
+              {done.length > 20 && (
+                <p className="text-xs text-center text-muted-foreground py-2">+ {done.length - 20} weitere</p>
               )}
             </div>
           )}

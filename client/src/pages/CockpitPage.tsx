@@ -12,11 +12,13 @@ import {
 } from "@/components/ui/alert-dialog";
 import {
   Bell, CheckCircle2, Clock, AlertTriangle, Plus, Trash2, Check,
-  CalendarClock, ArrowRight, BarChart3, RefreshCw,
+  CalendarClock, ArrowRight, BarChart3, RefreshCw, Phone, Euro, Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Reminder } from "@shared/schema";
+import type { Reminder, Activity } from "@shared/schema";
 import ReminderDialog from "@/components/ReminderDialog";
+import ActivityDialog from "@/components/ActivityDialog";
+import CommissionDialog from "@/components/CommissionDialog";
 
 type EnrichedReminder = Reminder & { customerName: string };
 
@@ -45,6 +47,8 @@ export default function CockpitPage() {
   const [editReminder, setEditReminder] = useState<EnrichedReminder | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [activeFilter, setActiveFilter] = useState<"all" | "today" | "overdue" | "done">("all");
+  const [activityDialogOpen, setActivityDialogOpen] = useState(false);
+  const [commissionDialogOpen, setCommissionDialogOpen] = useState(false);
 
   const { data: allReminders = [], isLoading } = useQuery<EnrichedReminder[]>({
     queryKey: ["/api/reminders"],
@@ -54,12 +58,28 @@ export default function CockpitPage() {
     },
   });
 
+  // Also fetch activities for overdue task count
+  const { data: activities = [] } = useQuery<Activity[]>({ queryKey: ["/api/activities"] });
+
   const today = new Date().toISOString().split("T")[0];
 
   const overdueReminders = allReminders.filter((r) => r.dueDate < today && r.status !== "done");
   const todayReminders = allReminders.filter((r) => r.dueDate === today && r.status !== "done");
   const doneToday = allReminders.filter((r) => r.status === "done" && r.updatedAt?.startsWith(today));
   const pendingAll = allReminders.filter((r) => r.status !== "done");
+
+  // Overdue activities (tasks)
+  const todayDate = new Date(); todayDate.setHours(0, 0, 0, 0);
+  const overdueActivities = activities.filter((a) => {
+    if (a.done || !a.dueDate) return false;
+    const due = new Date(a.dueDate); due.setHours(0, 0, 0, 0);
+    return due < todayDate;
+  });
+  const todayActivities = activities.filter((a) => {
+    if (a.done || !a.dueDate) return false;
+    const due = new Date(a.dueDate); due.setHours(0, 0, 0, 0);
+    return due.getTime() === todayDate.getTime();
+  });
 
   const filteredReminders = (() => {
     switch (activeFilter) {
@@ -118,14 +138,63 @@ export default function CockpitPage() {
             </p>
           </div>
         </div>
-        <Button
-          size="sm"
-          className="gap-2"
-          onClick={() => { setEditReminder(null); setReminderDialog(true); }}
-        >
-          <Plus className="w-3.5 h-3.5" /> Neue Wiedervorlage
-        </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2"
+            onClick={() => setActivityDialogOpen(true)}
+          >
+            <Phone className="w-3.5 h-3.5" /> Aktivität
+          </Button>
+          <Button
+            size="sm"
+            variant="outline"
+            className="gap-2"
+            onClick={() => setCommissionDialogOpen(true)}
+          >
+            <Euro className="w-3.5 h-3.5" /> Provision
+          </Button>
+          <Button
+            size="sm"
+            className="gap-2"
+            onClick={() => { setEditReminder(null); setReminderDialog(true); }}
+          >
+            <Plus className="w-3.5 h-3.5" /> Wiedervorlage
+          </Button>
+        </div>
       </div>
+
+      {/* Overdue activities alert — prominent if any */}
+      {(overdueActivities.length > 0 || todayActivities.length > 0) && (
+        <div className={cn(
+          "rounded-xl border px-4 py-3 flex items-center gap-3",
+          overdueActivities.length > 0
+            ? "bg-destructive/5 border-destructive/30"
+            : "bg-amber-50 dark:bg-amber-950/20 border-amber-200/60 dark:border-amber-800/40"
+        )}>
+          <Zap className={cn("w-5 h-5 shrink-0", overdueActivities.length > 0 ? "text-destructive" : "text-amber-500")} />
+          <div className="flex-1 min-w-0">
+            <p className={cn("text-sm font-semibold", overdueActivities.length > 0 ? "text-destructive" : "text-amber-700 dark:text-amber-300")}>
+              {overdueActivities.length > 0
+                ? `${overdueActivities.length} überfällige Aufgabe${overdueActivities.length !== 1 ? "n" : ""}`
+                : `${todayActivities.length} Aufgabe${todayActivities.length !== 1 ? "n" : ""} heute fällig`}
+            </p>
+            <p className="text-xs text-muted-foreground mt-0.5">
+              {overdueActivities.length > 0 && todayActivities.length > 0
+                ? `+ ${todayActivities.length} heute fällig`
+                : "Aktivitäten aus der Aufgabenliste"}
+            </p>
+          </div>
+          <Link href="/activities">
+            <a>
+              <Button size="sm" variant="ghost" className="gap-1.5 shrink-0">
+                Aufgaben <ArrowRight className="w-3.5 h-3.5" />
+              </Button>
+            </a>
+          </Link>
+        </div>
+      )}
 
       {/* Status-Karten */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -363,6 +432,16 @@ export default function CockpitPage() {
         open={reminderDialog}
         onClose={() => { setReminderDialog(false); setEditReminder(null); }}
         editReminder={editReminder}
+      />
+
+      {/* Quick Action Dialogs */}
+      <ActivityDialog
+        open={activityDialogOpen}
+        onClose={() => setActivityDialogOpen(false)}
+      />
+      <CommissionDialog
+        open={commissionDialogOpen}
+        onClose={() => setCommissionDialogOpen(false)}
       />
 
       {/* Delete Confirm */}
