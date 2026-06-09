@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -21,13 +22,17 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   ArrowLeft, Phone, Mail, MapPin, Building2, Euro, CreditCard,
   Plus, Trash2, CheckSquare, Calendar, FileText, Loader2, Sparkles, CalendarCheck,
   TrendingUp, Copy, RefreshCw, Settings2, AlertTriangle, CheckCircle2, Clock, Bell, Check,
-  Monitor, Pencil, Navigation, History, Ticket, ChevronDown, ChevronUp,
+  Monitor, Pencil, History, Ticket,
+  Activity, StickyNote, LayoutDashboard,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Customer, Note, Activity, InsertNote, InsertActivity, NoteTemplate, Commission, Reminder, SupportTicket } from "@shared/schema";
+import type { Customer, Note, Activity as ActivityType, InsertNote, InsertActivity, NoteTemplate, Commission, Reminder, SupportTicket } from "@shared/schema";
 import NoteEditor from "@/components/NoteEditor";
 import CommissionDialog from "@/components/CommissionDialog";
 import ReminderDialog from "@/components/ReminderDialog";
@@ -35,6 +40,7 @@ import TerminalDialog from "@/components/TerminalDialog";
 import ContractCard from "@/components/ContractCard";
 import QuickActivityDialog from "@/components/QuickActivityDialog";
 import SupportTicketDialog from "@/components/SupportTicketDialog";
+import { RiskScoreCard } from "@/components/RiskScoreCard";
 import { openPhone, openEmail, openMaps } from "@/lib/mobileActions";
 import {
   parseTerminals, terminalStatusLabel, terminalStatusClass,
@@ -85,7 +91,7 @@ export default function CustomerDetailPage() {
   const custId = Number(id);
   const { toast } = useToast();
 
-  const [activeTab, setActiveTab] = useState<"notes" | "activities">("notes");
+  const [activeTab, setActiveTab] = useState<"overview" | "activities" | "notes" | "contracts" | "commissions">("overview");
   const [noteDialog, setNoteDialog] = useState(false);
   const [actDialog, setActDialog] = useState(false);
   const [deleteNoteId, setDeleteNoteId] = useState<number | null>(null);
@@ -169,7 +175,7 @@ export default function CustomerDetailPage() {
   const { data: templates = [] } = useQuery<NoteTemplate[]>({
     queryKey: ["/api/note-templates"],
   });
-  const { data: activities = [], isLoading: aLoad } = useQuery<Activity[]>({
+  const { data: activities = [], isLoading: aLoad } = useQuery<ActivityType[]>({
     queryKey: ["/api/customers", custId, "activities"],
     queryFn: async () => {
       const r = await apiRequest("GET", `/api/customers/${custId}/activities`);
@@ -540,8 +546,9 @@ export default function CustomerDetailPage() {
     : 0;
 
   return (
-    <div className="space-y-5 max-w-5xl">
-      {/* Back + Title */}
+    <TooltipProvider>
+    <div className="space-y-4 max-w-5xl">
+      {/* Back */}
       <div className="flex items-center gap-3">
         <Link href="/customers">
           <a className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors">
@@ -550,972 +557,1338 @@ export default function CustomerDetailPage() {
         </Link>
       </div>
 
-      {/* Header card */}
+      {/* ── Header card ── */}
       <Card className="overflow-hidden">
         <div className="h-1.5 bg-[#0052CC]" />
-        <CardContent className="p-5">
+        <CardContent className="p-4 sm:p-5">
           <div className="flex items-start gap-4 flex-wrap">
             {/* Avatar */}
-            <div className="w-14 h-14 rounded-xl bg-primary/10 border-2 border-primary/20 flex items-center justify-center shrink-0">
-              <span className="text-xl font-black text-primary">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-primary/10 border-2 border-primary/20 flex items-center justify-center shrink-0">
+              <span className="text-lg sm:text-xl font-black text-primary">
                 {customer.companyName.charAt(0).toUpperCase()}
               </span>
             </div>
+
             {/* Name + meta */}
             <div className="flex-1 min-w-0">
-              <div className="flex items-start gap-3 flex-wrap">
-                <h1 className="text-xl font-bold text-foreground">{customer.companyName}</h1>
+              <div className="flex items-center gap-2 flex-wrap">
+                <h1 className="text-lg sm:text-xl font-bold text-foreground">{customer.companyName}</h1>
+                {customer.riskScore != null && (
+                  <RiskScoreCard score={customer.riskScore} size="sm" />
+                )}
               </div>
-              <p className="text-sm text-muted-foreground mt-1">{customer.contactName}</p>
-              {customer.industry && (
-                <p className="text-xs text-muted-foreground mt-0.5">{customer.industry}</p>
+              <p className="text-sm text-muted-foreground mt-0.5">{customer.contactName}</p>
+              <div className="flex items-center gap-3 mt-1 flex-wrap">
+                {customer.industry && (
+                  <span className="text-xs text-muted-foreground">{customer.industry}</span>
+                )}
+                {customer.city && (
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <MapPin className="w-3 h-3" />{customer.city}
+                  </span>
+                )}
+                {contractForm.contractEnd && contractDaysLeft !== null && (
+                  <span className={cn("text-xs font-semibold flex items-center gap-1", contractStatusColor)}>
+                    {contractStatusIcon}
+                    {contractDaysLeft < 0 ? "Vertrag abgelaufen" : `Vertrag: ${contractDaysLeft}d`}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Quick stats */}
+            <div className="flex items-center gap-3 shrink-0 flex-wrap">
+              {customer.paymentVolume && (
+                <div className="text-right">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-bold">Monatl. Volumen</p>
+                  <p className="text-xl sm:text-2xl font-black text-primary mt-0.5">
+                    € {customer.paymentVolume.toLocaleString("de-DE")}
+                  </p>
+                </div>
               )}
             </div>
-            {/* Quick stats */}
-            {customer.paymentVolume && (
-              <div className="text-right shrink-0">
-                <p className="text-[10px] text-muted-foreground uppercase tracking-wide font-bold">Monatl. Volumen</p>
-                <p className="text-2xl font-black text-primary mt-0.5">
-                  € {customer.paymentVolume.toLocaleString("de-DE")}
-                </p>
-              </div>
-            )}
           </div>
-        </CardContent>
-      </Card>
 
-      {/* ── 1-Tap Mobile Actions ── */}
-      {(customer.phone || customer.email || customer.city) && (
-        <Card className="overflow-hidden">
-          <div className="h-1 bg-green-500" />
-          <CardContent className="p-4">
-            <div className="flex items-center gap-2 mb-3">
-              <Navigation className="w-4 h-4 text-green-600" />
-              <span className="text-sm font-semibold text-foreground">Schnellaktionen</span>
-            </div>
-            <div className="grid grid-cols-3 gap-2 sm:flex sm:gap-3">
+          {/* ── 1-Tap Actions (inline in header) ── */}
+          {(customer.phone || customer.email || customer.city) && (
+            <div className="flex items-center gap-2 mt-4 pt-3 border-t border-border flex-wrap">
               {customer.phone && (
                 <Button
-                  className="flex-1 gap-2 bg-green-600 hover:bg-green-700 text-white h-12 text-sm font-semibold"
+                  size="sm"
+                  className="gap-2 bg-green-600 hover:bg-green-700 text-white h-10 min-w-[44px] font-semibold"
                   onClick={() => openPhone(customer.phone!)}
                 >
                   <Phone className="w-4 h-4" />
                   <span className="hidden sm:inline">Anrufen</span>
-                  <span className="sm:hidden text-xs">Anruf</span>
                 </Button>
               )}
               {customer.email && (
                 <Button
-                  className="flex-1 gap-2 bg-blue-600 hover:bg-blue-700 text-white h-12 text-sm font-semibold"
+                  size="sm"
+                  className="gap-2 bg-blue-600 hover:bg-blue-700 text-white h-10 min-w-[44px] font-semibold"
                   onClick={() => openEmail(customer.email!, `Betreff: ${customer.companyName}`)}
                 >
                   <Mail className="w-4 h-4" />
                   <span className="hidden sm:inline">E-Mail</span>
-                  <span className="sm:hidden text-xs">Mail</span>
                 </Button>
               )}
               {customer.city && (
                 <Button
-                  className="flex-1 gap-2 bg-orange-500 hover:bg-orange-600 text-white h-12 text-sm font-semibold"
+                  size="sm"
+                  className="gap-2 bg-orange-500 hover:bg-orange-600 text-white h-10 min-w-[44px] font-semibold"
                   onClick={() => openMaps("", customer.city, customer.country)}
                 >
                   <MapPin className="w-4 h-4" />
                   <span className="hidden sm:inline">Route</span>
-                  <span className="sm:hidden text-xs">Route</span>
                 </Button>
               )}
+              <div className="flex-1" />
+              {/* Quick-log actions */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-10 min-w-[44px] gap-1.5"
+                    onClick={() => { setQuickDialogType("call"); setQuickDialogOpen(true); }}
+                  >
+                    <Phone className="w-3.5 h-3.5 text-green-600" />
+                    <span className="hidden sm:inline text-xs">Anruf erfassen</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Anruf schnell erfassen</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-10 min-w-[44px] gap-1.5"
+                    onClick={() => { setQuickDialogType("note"); setQuickDialogOpen(true); }}
+                  >
+                    <StickyNote className="w-3.5 h-3.5 text-amber-600" />
+                    <span className="hidden sm:inline text-xs">Notiz</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Schnellnotiz erfassen</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-10 min-w-[44px] gap-1.5"
+                    onClick={() => setCommissionDialogOpen(true)}
+                  >
+                    <Euro className="w-3.5 h-3.5 text-primary" />
+                    <span className="hidden sm:inline text-xs">Provision</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Provision erfassen</TooltipContent>
+              </Tooltip>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-10 min-w-[44px] gap-1.5"
+                    onClick={() => { setActDialog(true); }}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline text-xs">Aufgabe</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Neue Aufgabe erstellen</TooltipContent>
+              </Tooltip>
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* ── Interaktionshistorie ── */}
-      <Card className="overflow-hidden">
-        <div className="h-1 bg-indigo-500" />
-        <CardHeader className="pb-2 pt-4 px-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <History className="w-4 h-4 text-indigo-500" /> Interaktionshistorie
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1.5"
-                onClick={() => { setQuickDialogType("call"); setQuickDialogOpen(true); }}
-              >
-                <Phone className="w-3 h-3" /> Anruf
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1.5"
-                onClick={() => { setQuickDialogType("email"); setQuickDialogOpen(true); }}
-              >
-                <Mail className="w-3 h-3" /> Mail
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1.5"
-                onClick={() => { setQuickDialogType("note"); setQuickDialogOpen(true); }}
-              >
-                <FileText className="w-3 h-3" /> Notiz
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          {timeline.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              <History className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
-              <p className="text-xs">Noch keine Interaktionen</p>
-            </div>
-          ) : (
-            <>
-              <div className="space-y-2">
-                {(timelineExpanded ? timeline : timeline.slice(0, 5)).map((item) => {
-                  const isActivity = item.type === "activity";
-                  const typeLabel: Record<string, string> = {
-                    call: "Anruf", email: "E-Mail", meeting: "Meeting", follow_up: "Follow-up",
-                    note: "Notiz", renewal: "Verlängerung",
-                  };
-                  const typeColor: Record<string, string> = {
-                    call: "text-green-600 dark:text-green-400",
-                    email: "text-cyan-600 dark:text-cyan-400",
-                    meeting: "text-indigo-600 dark:text-indigo-400",
-                    follow_up: "text-amber-600 dark:text-amber-400",
-                    note: "text-muted-foreground",
-                    renewal: "text-orange-600 dark:text-orange-400",
-                  };
-                  return (
-                    <div key={item.id} className="flex items-start gap-3 px-3 py-2 rounded-lg bg-secondary/30 border border-border">
-                      <div className="shrink-0 mt-0.5">
-                        {isActivity ? (
-                          item.status === "done"
-                            ? <CheckCircle2 className="w-4 h-4 text-green-500" />
-                            : <Clock className="w-4 h-4 text-amber-500" />
-                        ) : (
-                          <FileText className="w-4 h-4 text-muted-foreground" />
-                        )}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={cn("text-[10px] font-bold uppercase tracking-wide", typeColor[item.subtype] ?? "text-muted-foreground")}>
-                            {typeLabel[item.subtype] ?? item.subtype}
-                          </span>
-                          <span className="text-[10px] text-muted-foreground">
-                            {new Date(item.date).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
-                          </span>
-                          {isActivity && item.status && (
-                            <span className={cn("text-[10px] font-semibold", item.status === "done" ? "text-green-600 dark:text-green-400" : "text-amber-600 dark:text-amber-400")}>
-                              {item.status === "done" ? "Erledigt" : "Offen"}
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-foreground truncate mt-0.5">{item.title}</p>
-                        {item.description && (
-                          <p className="text-xs text-muted-foreground truncate mt-0.5">{item.description}</p>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-              {timeline.length > 5 && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full mt-2 h-7 text-xs gap-1.5 text-muted-foreground"
-                  onClick={() => setTimelineExpanded(!timelineExpanded)}
-                >
-                  {timelineExpanded ? (
-                    <><ChevronUp className="w-3 h-3" /> Weniger anzeigen</>
-                  ) : (
-                    <><ChevronDown className="w-3 h-3" /> Alle {timeline.length} Einträge anzeigen</>
-                  )}
-                </Button>
-              )}
-            </>
           )}
         </CardContent>
       </Card>
 
-      {/* ── Kundenakte – Übersicht ── */}
-      <Card className="overflow-hidden">
-        <div className="h-1 bg-[#0052CC]" />
-        <CardHeader className="pb-2 pt-4 px-4">
-          <CardTitle className="text-sm font-semibold flex items-center gap-2">
-            <FileText className="w-4 h-4 text-primary" /> Kundenakte – Übersicht
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* Vertrag */}
-            <div className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Vertrag</p>
-              {contractForm.contractEnd ? (
-                <div className={cn("flex items-center gap-1.5 text-sm font-semibold", contractStatusColor)}>
-                  {contractStatusIcon}
-                  {contractDaysLeft !== null && contractDaysLeft < 0
-                    ? `Abgelaufen`
-                    : contractDaysLeft === 0
-                    ? "Läuft heute ab"
-                    : `${contractDaysLeft}d verbleibend`}
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">–</p>
-              )}
-              {contractForm.contractEnd && (
-                <p className="text-xs text-muted-foreground">
-                  bis {new Date(contractForm.contractEnd).toLocaleDateString("de-DE")}
-                </p>
-              )}
-              {contractForm.contractProduct && (
-                <p className="text-xs text-foreground font-medium">{contractForm.contractProduct}</p>
-              )}
-            </div>
+      {/* ── Main Tabs ── */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as any)}>
+        <TabsList className="w-full h-auto flex flex-wrap gap-1 bg-muted/60 p-1 rounded-lg">
+          <TabsTrigger value="overview" className="flex-1 min-w-[80px] gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm h-9">
+            <LayoutDashboard className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Übersicht</span>
+            <span className="sm:hidden text-xs">Info</span>
+          </TabsTrigger>
+          <TabsTrigger value="activities" className="flex-1 min-w-[80px] gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm h-9">
+            <Activity className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Aktivitäten</span>
+            <span className="sm:hidden text-xs">Tasks</span>
+            {pendingActs > 0 && (
+              <span className="ml-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold">
+                {pendingActs}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="notes" className="flex-1 min-w-[80px] gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm h-9">
+            <StickyNote className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Notizen</span>
+            <span className="sm:hidden text-xs">Notizen</span>
+            {notes.length > 0 && (
+              <span className="ml-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-secondary text-muted-foreground text-[10px] font-bold">
+                {notes.length}
+              </span>
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="contracts" className="flex-1 min-w-[80px] gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm h-9">
+            <FileText className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Vertrag</span>
+            <span className="sm:hidden text-xs">Vertrag</span>
+            {contractDaysLeft !== null && contractDaysLeft >= 0 && contractDaysLeft <= 60 && (
+              <span className="ml-0.5 w-2 h-2 rounded-full bg-red-500 shrink-0" />
+            )}
+          </TabsTrigger>
+          <TabsTrigger value="commissions" className="flex-1 min-w-[80px] gap-1.5 data-[state=active]:bg-background data-[state=active]:shadow-sm h-9">
+            <TrendingUp className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Provisionen</span>
+            <span className="sm:hidden text-xs">Prov.</span>
+          </TabsTrigger>
+        </TabsList>
 
-            {/* Terminale */}
-            <div className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Terminale</p>
-              <div className="space-y-0.5">
-                <div className="flex items-center gap-1.5">
-                  <div className={cn("w-2 h-2 rounded-full shrink-0", customer.girocardDisagio != null ? "bg-green-500" : "bg-muted")} />
-                  <span className="text-xs text-foreground">Girocard</span>
-                  {customer.girocardDisagio != null && (
-                    <span className="text-[10px] text-muted-foreground">{customer.girocardDisagio.toFixed(3)}%</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className={cn("w-2 h-2 rounded-full shrink-0", customer.creditcardDisagio != null ? "bg-green-500" : "bg-muted")} />
-                  <span className="text-xs text-foreground">Kreditkarte</span>
-                  {customer.creditcardDisagio != null && (
-                    <span className="text-[10px] text-muted-foreground">{customer.creditcardDisagio.toFixed(3)}%</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <div className={cn("w-2 h-2 rounded-full shrink-0", customer.selectedProduct?.toLowerCase().includes("portab") ? "bg-green-500" : "bg-muted")} />
-                  <span className="text-xs text-foreground">Portable</span>
-                </div>
-              </div>
-            </div>
+        {/* ══════════════════════════════════════════════════════════════
+            TAB: ÜBERSICHT
+        ══════════════════════════════════════════════════════════════ */}
+        <TabsContent value="overview" className="mt-4 space-y-4">
+
+          {/* Status-Kacheln */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* Vertrag */}
+            <Card className={cn("overflow-hidden cursor-pointer hover:shadow-md transition-shadow", contractDaysLeft !== null && contractDaysLeft <= 60 && contractDaysLeft >= 0 && "border-red-200 dark:border-red-800/40")}
+              onClick={() => setActiveTab("contracts")}>
+              <CardContent className="p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Vertrag</p>
+                {contractForm.contractEnd ? (
+                  <>
+                    <div className={cn("flex items-center gap-1.5 text-sm font-bold", contractStatusColor)}>
+                      {contractStatusIcon}
+                      {contractDaysLeft !== null && contractDaysLeft < 0
+                        ? "Abgelaufen"
+                        : contractDaysLeft === 0
+                        ? "Heute!"
+                        : `${contractDaysLeft}d`}
+                    </div>
+                    {contractForm.contractProduct && (
+                      <p className="text-[11px] text-muted-foreground truncate mt-0.5">{contractForm.contractProduct}</p>
+                    )}
+                  </>
+                ) : (
+                  <p className="text-sm text-muted-foreground">–</p>
+                )}
+              </CardContent>
+            </Card>
+
+            {/* Offene Aufgaben */}
+            <Card className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => setActiveTab("activities")}>
+              <CardContent className="p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Aufgaben</p>
+                <p className={cn("text-sm font-bold", pendingActs > 0 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400")}>
+                  {pendingActs > 0 ? `${pendingActs} offen` : "Alles erledigt"}
+                </p>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{activities.length} gesamt</p>
+              </CardContent>
+            </Card>
 
             {/* Provisionen */}
-            <div className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Provisionen</p>
-              <p className="text-sm font-bold text-primary">
-                € {customerCommissionsTotal.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </p>
-              <p className="text-[10px] text-muted-foreground">Gesamt</p>
-              {customerCommissions[0] && (
-                <p className="text-xs text-muted-foreground">
-                  Letzte: {new Date(customerCommissions[0].date).toLocaleDateString("de-DE", { day: "2-digit", month: "short" })}
-                  {" "}· € {customerCommissions[0].amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            <Card className="overflow-hidden cursor-pointer hover:shadow-md transition-shadow"
+              onClick={() => setActiveTab("commissions")}>
+              <CardContent className="p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Provisionen</p>
+                <p className="text-sm font-bold text-primary">
+                  € {customerCommissionsTotal.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </p>
-              )}
-            </div>
+                <p className="text-[11px] text-muted-foreground mt-0.5">{customerCommissions.length} Einträge</p>
+              </CardContent>
+            </Card>
 
             {/* Nächste Aktion */}
-            <div className="space-y-1">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Nächste Aktion</p>
-              {(() => {
-                const nextReminder = customerReminders.filter((r) => r.status !== "done").sort((a, b) => a.dueDate > b.dueDate ? 1 : -1)[0];
-                const nextActivity = activities.filter((a) => !a.done && a.dueDate).sort((a, b) => (a.dueDate! > b.dueDate! ? 1 : -1))[0];
-                if (nextReminder) {
-                  const days = Math.ceil((new Date(nextReminder.dueDate).getTime() - new Date().setHours(0,0,0,0)) / 86400000);
-                  return (
-                    <>
-                      <div className={cn("flex items-center gap-1.5 text-xs font-semibold",
-                        days < 0 ? "text-destructive" : days === 0 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"
-                      )}>
-                        <Bell className="w-3 h-3" />
-                        {days < 0 ? "Überfällig" : days === 0 ? "Heute" : `in ${days}d`}
-                      </div>
-                      <p className="text-xs text-foreground truncate">{nextReminder.description}</p>
-                    </>
-                  );
-                }
-                if (nextActivity) {
-                  const days = Math.ceil((new Date(nextActivity.dueDate!).getTime() - new Date().setHours(0,0,0,0)) / 86400000);
-                  return (
-                    <>
-                      <div className={cn("flex items-center gap-1.5 text-xs font-semibold",
-                        days < 0 ? "text-destructive" : days === 0 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"
-                      )}>
-                        <Calendar className="w-3 h-3" />
-                        {days < 0 ? "Überfällig" : days === 0 ? "Heute" : `in ${days}d`}
-                      </div>
-                      <p className="text-xs text-foreground truncate">{nextActivity.description}</p>
-                    </>
-                  );
-                }
-                if (contractDaysLeft !== null && contractDaysLeft > 0 && contractDaysLeft <= 90) {
-                  return (
-                    <>
-                      <div className={cn("flex items-center gap-1.5 text-xs font-semibold",
-                        contractDaysLeft < 60 ? "text-destructive" : "text-amber-600 dark:text-amber-400"
-                      )}>
-                        <RefreshCw className="w-3 h-3" />
-                        Verlängerung in {contractDaysLeft}d
-                      </div>
-                    </>
-                  );
-                }
-                return <p className="text-sm text-muted-foreground">–</p>;
-              })()}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Info + Payment grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Contact info */}
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Building2 className="w-4 h-4 text-primary" /> Kontaktdaten
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3">
-            <InfoRow icon={Mail} label="E-Mail" value={customer.email} href={customer.email ? `mailto:${customer.email}` : undefined} />
-            <InfoRow icon={Phone} label="Telefon" value={customer.phone} href={customer.phone ? `tel:${customer.phone.replace(/\s/g, "")}` : undefined} />
-            <InfoRow icon={MapPin} label="Stadt / Land" value={[customer.city, customer.country].filter(Boolean).join(", ")} />
-          </CardContent>
-        </Card>
-
-        {/* Payment info */}
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <CreditCard className="w-4 h-4 text-primary" /> Zahlungsinformationen
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3">
-            <InfoRow icon={Euro} label="Zahlungsmethode" value={
-              customer.paymentMethod === "card" ? "Kartenzahlung" :
-              customer.paymentMethod === "sepa" ? "SEPA-Lastschrift" :
-              customer.paymentMethod === "instant" ? "Echtzeit-Überweisung" :
-              customer.paymentMethod ?? undefined
-            } />
-            <InfoRow icon={Building2} label="Bank" value={customer.bankName} />
-            <InfoRow icon={CreditCard} label="IBAN" value={customer.iban} />
-            <InfoRow icon={FileText} label="Berater" value={customer.commerzAccountManager} />
-            {customer.selectedProduct && (
-              <InfoRow icon={CreditCard} label="Gewähltes Produkt" value={customer.selectedProduct} />
-            )}
-            {(customer.contractStart || customer.contractEnd) && (
-              <InfoRow icon={Calendar} label="Vertragszeitraum" value={
-                [customer.contractStart && new Date(customer.contractStart).toLocaleDateString("de-DE"),
-                 customer.contractEnd && new Date(customer.contractEnd).toLocaleDateString("de-DE")]
-                  .filter(Boolean).join(" – ")
-              } />
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Disagio-Karten */}
-      {(customer.girocardDisagio != null || customer.creditcardDisagio != null) && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-          {/* Girocard */}
-          {customer.girocardDisagio != null && (
-            <Card>
-              <CardHeader className="pb-2 pt-4 px-4">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-sm bg-primary" />
-                  Girocard — Disagio-Struktur
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pb-4 space-y-3">
-                <div className="flex justify-between items-center py-1.5 border-b border-border">
-                  <span className="text-xs font-bold text-foreground">Gesamt-Disagio (Händler zahlt)</span>
-                  <span className="text-sm font-black text-primary">{customer.girocardDisagio.toFixed(3)} %</span>
-                </div>
-                {[
-                  { label: "Interchange (an Hausbank)", val: customer.girocardInterchange, color: "bg-blue-500", tip: "EU max. 0,20 %" },
-                  { label: "Scheme Fee (ans DK-Netz)", val: customer.girocardSchemeFee, color: "bg-indigo-400", tip: "Girocard-Netzgebühr" },
-                  { label: "Acquirer-Marge (CGP)", val: customer.girocardAcquirer, color: "bg-[#FFD100]", tip: "Commerz Globalpay" },
-                ].map(({ label, val, color, tip }) => val != null && (
-                  <div key={label}>
-                    <div className="flex justify-between mb-1">
-                      <div>
-                        <span className="text-xs text-foreground font-medium">{label}</span>
-                        <span className="text-[10px] text-muted-foreground ml-1">({tip})</span>
-                      </div>
-                      <span className="text-xs font-bold text-foreground">{val.toFixed(3)} %</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                      <div
-                        className={cn("h-full rounded-full", color)}
-                        style={{ width: `${customer.girocardDisagio! > 0 ? (val / customer.girocardDisagio!) * 100 : 0}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-
-          {/* Kreditkarte */}
-          {customer.creditcardDisagio != null && (
-            <Card>
-              <CardHeader className="pb-2 pt-4 px-4">
-                <CardTitle className="text-sm font-semibold flex items-center gap-2">
-                  <div className="w-3 h-3 rounded-sm bg-amber-400" />
-                  Kreditkarte (Visa / MC) — Disagio-Struktur
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="px-4 pb-4 space-y-3">
-                <div className="flex justify-between items-center py-1.5 border-b border-border">
-                  <span className="text-xs font-bold text-foreground">Gesamt-Disagio (Händler zahlt)</span>
-                  <span className="text-sm font-black text-primary">{customer.creditcardDisagio.toFixed(3)} %</span>
-                </div>
-                {[
-                  { label: "Interchange (an kartenausg. Bank)", val: customer.creditcardInterchange, color: "bg-amber-500", tip: "EU max. 0,30 %" },
-                  { label: "Scheme Fee (an Visa / Mastercard)", val: customer.creditcardSchemeFee, color: "bg-orange-400", tip: "Netzgebühr" },
-                  { label: "Acquirer-Marge (CGP)", val: customer.creditcardAcquirer, color: "bg-[#FFD100]", tip: "Commerz Globalpay" },
-                ].map(({ label, val, color, tip }) => val != null && (
-                  <div key={label}>
-                    <div className="flex justify-between mb-1">
-                      <div>
-                        <span className="text-xs text-foreground font-medium">{label}</span>
-                        <span className="text-[10px] text-muted-foreground ml-1">({tip})</span>
-                      </div>
-                      <span className="text-xs font-bold text-foreground">{val.toFixed(3)} %</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                      <div
-                        className={cn("h-full rounded-full", color)}
-                        style={{ width: `${customer.creditcardDisagio! > 0 ? (val / customer.creditcardDisagio!) * 100 : 0}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          )}
-        </div>
-      )}
-
-      {/* ── Vertrag & Terminals (Übersicht) ── */}
-      <ContractCard
-        contractProduct={contractForm.contractProduct || customer.contractProduct}
-        contractStart={contractForm.contractStart || customer.contractStart}
-        contractEnd={contractForm.contractEnd || customer.contractEnd}
-        contractTermMonths={contractForm.contractTermMonths ? parseInt(contractForm.contractTermMonths, 10) : customer.contractTermMonths}
-        cancellationNoticeDays={contractForm.cancellationNoticeDays ? parseInt(contractForm.cancellationNoticeDays, 10) : customer.cancellationNoticeDays}
-        terminalsJson={terminals.length > 0 ? JSON.stringify(terminals) : customer.terminals}
-      />
-
-      {/* ── Vertrag bearbeiten + Provisions-Einstellungen ── */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-
-        {/* Vertrag bearbeiten */}
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-primary" /> Vertrag bearbeiten
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3">
-            <div className="space-y-1.5">
-              <Label htmlFor="contract-product">Produkt</Label>
-              <Input
-                id="contract-product"
-                value={contractForm.contractProduct}
-                onChange={(e) => setContractForm((f) => ({ ...f, contractProduct: e.target.value }))}
-                placeholder="z.B. EC-Terminal stationär"
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="contract-start">Vertragsbeginn</Label>
-                <Input
-                  id="contract-start"
-                  type="date"
-                  value={contractForm.contractStart}
-                  onChange={(e) => {
-                    const start = e.target.value;
-                    setContractForm((f) => {
-                      // Auto-calculate end date if term is set
-                      const months = f.contractTermMonths ? parseInt(f.contractTermMonths, 10) : null;
-                      const newEnd = start && months ? calculateContractEnd(start, months) : f.contractEnd;
-                      return { ...f, contractStart: start, contractEnd: newEnd };
-                    });
-                  }}
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="contract-term">Laufzeit (Monate)</Label>
-                <Input
-                  id="contract-term"
-                  type="number"
-                  min="1"
-                  step="1"
-                  value={contractForm.contractTermMonths}
-                  onChange={(e) => {
-                    const months = e.target.value;
-                    setContractForm((f) => {
-                      const m = parseInt(months, 10);
-                      const newEnd = f.contractStart && m > 0 ? calculateContractEnd(f.contractStart, m) : f.contractEnd;
-                      return { ...f, contractTermMonths: months, contractEnd: newEnd };
-                    });
-                  }}
-                  placeholder="z.B. 24"
-                />
-              </div>
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="contract-end">Vertragsende</Label>
-              <Input
-                id="contract-end"
-                type="date"
-                value={contractForm.contractEnd}
-                onChange={(e) => setContractForm((f) => ({ ...f, contractEnd: e.target.value }))}
-              />
-              {contractDaysLeft !== null && contractForm.contractEnd && (
-                <div className={cn("flex items-center gap-1.5 text-xs font-semibold mt-1", contractStatusColor)}>
-                  {contractStatusIcon}
-                  {contractDaysLeft < 0
-                    ? `Abgelaufen vor ${Math.abs(contractDaysLeft)} Tagen`
-                    : contractDaysLeft === 0
-                    ? "Läuft heute ab!"
-                    : `Noch ${contractDaysLeft} Tage`}
-                </div>
-              )}
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="contract-notice">Kündigungsfrist (Tage)</Label>
-              <Input
-                id="contract-notice"
-                type="number"
-                min="0"
-                step="1"
-                value={contractForm.cancellationNoticeDays}
-                onChange={(e) => setContractForm((f) => ({ ...f, cancellationNoticeDays: e.target.value }))}
-                placeholder="z.B. 30"
-              />
-              {cancellationDeadline && (
-                <p className="text-[11px] text-muted-foreground">
-                  Kündigungsstichtag:{" "}
-                  <strong className={cn(
-                    getDaysUntilEnd(cancellationDeadline) < 14 && getDaysUntilEnd(cancellationDeadline) >= 0
-                      ? "text-red-600 dark:text-red-400"
-                      : ""
-                  )}>
-                    {new Date(cancellationDeadline).toLocaleDateString("de-DE")}
-                  </strong>
-                </p>
-              )}
-            </div>
-            <div className="flex gap-2 pt-1">
-              <Button
-                size="sm"
-                variant="outline"
-                className="flex-1 h-8 text-xs gap-1.5"
-                onClick={saveContractSettings}
-                disabled={contractSaving}
-              >
-                {contractSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
-                Speichern
-              </Button>
-              {contractForm.contractEnd && contractDaysLeft !== null && contractDaysLeft <= 60 && contractDaysLeft >= 0 && (
-                <Button
-                  size="sm"
-                  className="flex-1 h-8 text-xs gap-1.5 bg-amber-600 hover:bg-amber-700"
-                  onClick={createRenewalTask}
-                >
-                  <RefreshCw className="w-3 h-3" /> Verlängerungsaufgabe
-                </Button>
-              )}
-              {contractForm.contractEnd && (contractDaysLeft === null || contractDaysLeft > 60) && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="flex-1 h-8 text-xs gap-1.5"
-                  onClick={createRenewalTask}
-                >
-                  <RefreshCw className="w-3 h-3" /> Verlängerungsaufgabe
-                </Button>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Provisions-Einstellungen */}
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Settings2 className="w-4 h-4 text-primary" /> Provisions-Einstellungen
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3">
-            <p className="text-[11px] text-muted-foreground">
-              Standard-Werte für neue Provisionen. Werden im Provisions-Dialog automatisch vorausgefüllt.
-            </p>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="prov-disagio">Standard-Disagio (%)</Label>
-                <Input
-                  id="prov-disagio"
-                  type="number"
-                  min="0"
-                  step="0.001"
-                  value={provForm.defaultDisagio}
-                  onChange={(e) => setProvForm((f) => ({ ...f, defaultDisagio: e.target.value }))}
-                  placeholder="z.B. 0.25"
-                />
-              </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="prov-volume">Standard-Volumen (€)</Label>
-                <Input
-                  id="prov-volume"
-                  type="number"
-                  min="0"
-                  step="1"
-                  value={provForm.defaultVolume}
-                  onChange={(e) => setProvForm((f) => ({ ...f, defaultVolume: e.target.value }))}
-                  placeholder="z.B. 50000"
-                />
-              </div>
-            </div>
-            {provForm.defaultDisagio && provForm.defaultVolume && (
-              <p className="text-[11px] text-muted-foreground">
-                Vorschau:{" "}
-                <strong>
-                  {(parseFloat(provForm.defaultVolume) * parseFloat(provForm.defaultDisagio) / 100).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
-                </strong>{" "}
-                Provision
-              </p>
-            )}
-            <Button
-              size="sm"
-              variant="outline"
-              className="w-full h-8 text-xs"
-              onClick={saveProvisionSettings}
-              disabled={provSaving}
-            >
-              {provSaving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
-              Speichern
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* ── Terminals verwalten ── */}
-      <Card>
-        <CardHeader className="pb-2 pt-4 px-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Monitor className="w-4 h-4 text-primary" /> Terminals verwalten
-            </CardTitle>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs gap-1.5"
-              onClick={() => { setEditTerminalIndex(null); setTerminalDialogOpen(true); }}
-            >
-              <Plus className="w-3 h-3" /> Terminal hinzufügen
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          {terminals.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              <Monitor className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
-              <p className="text-xs">Noch keine Terminals erfasst</p>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted/40 border-b border-border">
-                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Typ</th>
-                    <th className="text-center px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Anzahl</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Status</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground text-right">Aktionen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {terminals.map((t, i) => (
-                    <tr key={i} className={cn("border-b border-border last:border-0", i % 2 === 1 && "bg-muted/20")}>
-                      <td className="px-3 py-2 font-medium text-foreground">{t.type}</td>
-                      <td className="px-3 py-2 text-center font-bold text-foreground">{t.count}</td>
-                      <td className="px-3 py-2">
-                        <span className={cn("text-xs font-semibold", terminalStatusClass(t.status))}>
-                          {terminalStatusLabel(t.status)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                            onClick={() => { setEditTerminalIndex(i); setTerminalDialogOpen(true); }}
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                            onClick={() => handleTerminalDelete(i)}
-                            disabled={terminalsSaving}
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── KI-Zusammenfassung ── */}
-      <Card>
-        <CardHeader className="pb-2 pt-4 px-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-primary" /> KI-Zusammenfassung
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              {aiSummary && (
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 text-xs gap-1.5"
-                  onClick={copyToClipboard}
-                >
-                  {copied ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                  {copied ? "Kopiert!" : "Kopieren"}
-                </Button>
-              )}
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1.5"
-                onClick={fetchAiSummary}
-                disabled={aiLoading}
-              >
-                {aiLoading ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
-                ) : (
-                  <Sparkles className="w-3 h-3" />
-                )}
-                {aiLoading ? "Zusammenfassen…" : "Zusammenfassen"}
-              </Button>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          {!aiSummary && !aiLoading && !aiError && (
-            <div className="text-center py-6 text-muted-foreground">
-              <Sparkles className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
-              <p className="text-xs">
-                Klicke "Zusammenfassen" um eine KI-Zusammenfassung aller Notizen und Aktivitäten zu erstellen.
-              </p>
-            </div>
-          )}
-          {aiLoading && (
-            <div className="flex items-center gap-3 py-4 text-muted-foreground">
-              <Loader2 className="w-4 h-4 animate-spin shrink-0" />
-              <p className="text-sm">KI analysiert Notizen und Aktivitäten…</p>
-            </div>
-          )}
-          {aiError && (
-            <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-              <p>{aiError}</p>
-            </div>
-          )}
-          {aiSummary && !aiLoading && (
-            <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
-              <p className="text-sm text-foreground leading-relaxed">{aiSummary}</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── KI-Besuchsbericht ── */}
-      <Card className="overflow-hidden">
-        <div className="h-1 bg-violet-500" />
-        <CardHeader className="pb-2 pt-4 px-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-violet-500" /> KI-Besuchsbericht
-            </CardTitle>
-            {visitReport && (
-              <div className="flex items-center gap-2">
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-7 text-xs gap-1.5"
-                  onClick={copyVisitReport}
-                >
-                  {visitReportCopied ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
-                  {visitReportCopied ? "Kopiert!" : "Kopieren"}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="h-7 text-xs gap-1.5"
-                  onClick={extractTodosHandler}
-                  disabled={todosExtracting}
-                >
-                  {todosExtracting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckSquare className="w-3 h-3" />}
-                  To-dos erstellen
-                </Button>
-              </div>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent className="px-4 pb-4 space-y-3">
-          <div className="space-y-1.5">
-            <Label htmlFor="visit-notes">Besuchsnotizen</Label>
-            <Textarea
-              id="visit-notes"
-              value={visitNotes}
-              onChange={(e) => setVisitNotes(e.target.value)}
-              placeholder="Was wurde beim Besuch besprochen? Stichpunkte reichen…"
-              rows={4}
-              className="resize-none"
-            />
-          </div>
-          <Button
-            size="sm"
-            className="gap-1.5"
-            onClick={generateVisitReportHandler}
-            disabled={visitReportLoading || !visitNotes.trim()}
-          >
-            {visitReportLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
-            {visitReportLoading ? "Generiere Bericht…" : "KI-Bericht generieren"}
-          </Button>
-          {visitReportError && (
-            <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-              <p>{visitReportError}</p>
-            </div>
-          )}
-          {visitReport && !visitReportLoading && (
-            <div className="p-3 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-200/50 dark:border-violet-800/30">
-              <pre className="text-sm text-foreground leading-relaxed whitespace-pre-wrap font-sans">{visitReport}</pre>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* ── Supportfälle ── */}
-      <Card className="overflow-hidden">
-        <div className="h-1 bg-red-500" />
-        <CardHeader className="pb-2 pt-4 px-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Ticket className="w-4 h-4 text-red-500" /> Supportfälle
-              {supportTickets.filter((t) => t.status === "open" || t.status === "in_progress").length > 0 && (
-                <span className="flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-red-100 dark:bg-red-900/40 text-[10px] font-bold text-red-700 dark:text-red-300">
-                  {supportTickets.filter((t) => t.status === "open" || t.status === "in_progress").length}
-                </span>
-              )}
-            </CardTitle>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs gap-1.5"
-              onClick={() => { setEditTicket(null); setTicketDialogOpen(true); }}
-            >
-              <Plus className="w-3 h-3" /> Neuer Supportfall
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          {supportTickets.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              <Ticket className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
-              <p className="text-xs">Keine Supportfälle für diesen Kunden</p>
-            </div>
-          ) : (
-            <div className="rounded-lg border border-border overflow-hidden">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-muted/40 border-b border-border">
-                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Titel</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground hidden sm:table-cell">Status</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground hidden sm:table-cell">Priorität</th>
-                    <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground hidden md:table-cell">Erstellt</th>
-                    <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground text-right">Aktionen</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {supportTickets.map((t, i) => {
-                    const statusConfig: Record<string, { label: string; color: string }> = {
-                      open: { label: "🟢 Offen", color: "text-green-600 dark:text-green-400" },
-                      in_progress: { label: "🟡 In Bearbeitung", color: "text-amber-600 dark:text-amber-400" },
-                      resolved: { label: "✅ Gelöst", color: "text-blue-600 dark:text-blue-400" },
-                      closed: { label: "⚫ Geschlossen", color: "text-muted-foreground" },
-                    };
-                    const priorityConfig: Record<string, { label: string; color: string }> = {
-                      high: { label: "🔴 Hoch", color: "text-red-600 dark:text-red-400" },
-                      medium: { label: "🟡 Mittel", color: "text-amber-600 dark:text-amber-400" },
-                      low: { label: "🟢 Niedrig", color: "text-green-600 dark:text-green-400" },
-                    };
-                    const sc = statusConfig[t.status] ?? { label: t.status, color: "" };
-                    const pc = priorityConfig[t.priority] ?? { label: t.priority, color: "" };
+            <Card className="overflow-hidden">
+              <CardContent className="p-3">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Nächste Aktion</p>
+                {(() => {
+                  const nextReminder = customerReminders.filter((r) => r.status !== "done").sort((a, b) => a.dueDate > b.dueDate ? 1 : -1)[0];
+                  const nextActivity = activities.filter((a) => !a.done && a.dueDate).sort((a, b) => (a.dueDate! > b.dueDate! ? 1 : -1))[0];
+                  if (nextReminder) {
+                    const days = Math.ceil((new Date(nextReminder.dueDate).getTime() - new Date().setHours(0,0,0,0)) / 86400000);
                     return (
-                      <tr key={t.id} className={cn("border-b border-border last:border-0", i % 2 === 1 && "bg-muted/20")}>
-                        <td className="px-3 py-2">
-                          <p className="font-medium text-foreground text-sm">{t.title}</p>
-                          {t.description && (
-                            <p className="text-xs text-muted-foreground truncate max-w-[200px]">{t.description}</p>
+                      <>
+                        <div className={cn("flex items-center gap-1 text-xs font-semibold",
+                          days < 0 ? "text-destructive" : days === 0 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"
+                        )}>
+                          <Bell className="w-3 h-3" />
+                          {days < 0 ? "Überfällig" : days === 0 ? "Heute" : `in ${days}d`}
+                        </div>
+                        <p className="text-[11px] text-foreground truncate mt-0.5">{nextReminder.description}</p>
+                      </>
+                    );
+                  }
+                  if (nextActivity) {
+                    const days = Math.ceil((new Date(nextActivity.dueDate!).getTime() - new Date().setHours(0,0,0,0)) / 86400000);
+                    return (
+                      <>
+                        <div className={cn("flex items-center gap-1 text-xs font-semibold",
+                          days < 0 ? "text-destructive" : days === 0 ? "text-amber-600 dark:text-amber-400" : "text-green-600 dark:text-green-400"
+                        )}>
+                          <Calendar className="w-3 h-3" />
+                          {days < 0 ? "Überfällig" : days === 0 ? "Heute" : `in ${days}d`}
+                        </div>
+                        <p className="text-[11px] text-foreground truncate mt-0.5">{nextActivity.description}</p>
+                      </>
+                    );
+                  }
+                  return <p className="text-sm text-muted-foreground">–</p>;
+                })()}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Kontakt + Zahlungsinfos */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Building2 className="w-4 h-4 text-primary" /> Kontaktdaten
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 space-y-3">
+                <InfoRow icon={Mail} label="E-Mail" value={customer.email} href={customer.email ? `mailto:${customer.email}` : undefined} />
+                <InfoRow icon={Phone} label="Telefon" value={customer.phone} href={customer.phone ? `tel:${customer.phone.replace(/\s/g, "")}` : undefined} />
+                <InfoRow icon={MapPin} label="Stadt / Land" value={[customer.city, customer.country].filter(Boolean).join(", ")} />
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <CreditCard className="w-4 h-4 text-primary" /> Zahlungsinformationen
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 space-y-3">
+                <InfoRow icon={Euro} label="Zahlungsmethode" value={
+                  customer.paymentMethod === "card" ? "Kartenzahlung" :
+                  customer.paymentMethod === "sepa" ? "SEPA-Lastschrift" :
+                  customer.paymentMethod === "instant" ? "Echtzeit-Überweisung" :
+                  customer.paymentMethod ?? undefined
+                } />
+                <InfoRow icon={Building2} label="Bank" value={customer.bankName} />
+                <InfoRow icon={CreditCard} label="IBAN" value={customer.iban} />
+                <InfoRow icon={FileText} label="Berater" value={customer.commerzAccountManager} />
+                {customer.selectedProduct && (
+                  <InfoRow icon={CreditCard} label="Gewähltes Produkt" value={customer.selectedProduct} />
+                )}
+                {(customer.contractStart || customer.contractEnd) && (
+                  <InfoRow icon={Calendar} label="Vertragszeitraum" value={
+                    [customer.contractStart && new Date(customer.contractStart).toLocaleDateString("de-DE"),
+                     customer.contractEnd && new Date(customer.contractEnd).toLocaleDateString("de-DE")]
+                      .filter(Boolean).join(" – ")
+                  } />
+                )}
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Disagio-Karten */}
+          {(customer.girocardDisagio != null || customer.creditcardDisagio != null) && (
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {customer.girocardDisagio != null && (
+                <Card>
+                  <CardHeader className="pb-2 pt-4 px-4">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-sm bg-primary" />
+                      Girocard — Disagio-Struktur
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 space-y-3">
+                    <div className="flex justify-between items-center py-1.5 border-b border-border">
+                      <span className="text-xs font-bold text-foreground">Gesamt-Disagio (Händler zahlt)</span>
+                      <span className="text-sm font-black text-primary">{customer.girocardDisagio.toFixed(3)} %</span>
+                    </div>
+                    {[
+                      { label: "Interchange (an Hausbank)", val: customer.girocardInterchange, color: "bg-blue-500", tip: "EU max. 0,20 %" },
+                      { label: "Scheme Fee (ans DK-Netz)", val: customer.girocardSchemeFee, color: "bg-indigo-400", tip: "Girocard-Netzgebühr" },
+                      { label: "Acquirer-Marge (CGP)", val: customer.girocardAcquirer, color: "bg-[#FFD100]", tip: "Commerz Globalpay" },
+                    ].map(({ label, val, color, tip }) => val != null && (
+                      <div key={label}>
+                        <div className="flex justify-between mb-1">
+                          <div>
+                            <span className="text-xs text-foreground font-medium">{label}</span>
+                            <span className="text-[10px] text-muted-foreground ml-1">({tip})</span>
+                          </div>
+                          <span className="text-xs font-bold text-foreground">{val.toFixed(3)} %</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                          <div
+                            className={cn("h-full rounded-full", color)}
+                            style={{ width: `${customer.girocardDisagio! > 0 ? (val / customer.girocardDisagio!) * 100 : 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+              {customer.creditcardDisagio != null && (
+                <Card>
+                  <CardHeader className="pb-2 pt-4 px-4">
+                    <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                      <div className="w-3 h-3 rounded-sm bg-amber-400" />
+                      Kreditkarte (Visa / MC) — Disagio-Struktur
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="px-4 pb-4 space-y-3">
+                    <div className="flex justify-between items-center py-1.5 border-b border-border">
+                      <span className="text-xs font-bold text-foreground">Gesamt-Disagio (Händler zahlt)</span>
+                      <span className="text-sm font-black text-primary">{customer.creditcardDisagio.toFixed(3)} %</span>
+                    </div>
+                    {[
+                      { label: "Interchange (an kartenausg. Bank)", val: customer.creditcardInterchange, color: "bg-amber-500", tip: "EU max. 0,30 %" },
+                      { label: "Scheme Fee (an Visa / Mastercard)", val: customer.creditcardSchemeFee, color: "bg-orange-400", tip: "Netzgebühr" },
+                      { label: "Acquirer-Marge (CGP)", val: customer.creditcardAcquirer, color: "bg-[#FFD100]", tip: "Commerz Globalpay" },
+                    ].map(({ label, val, color, tip }) => val != null && (
+                      <div key={label}>
+                        <div className="flex justify-between mb-1">
+                          <div>
+                            <span className="text-xs text-foreground font-medium">{label}</span>
+                            <span className="text-[10px] text-muted-foreground ml-1">({tip})</span>
+                          </div>
+                          <span className="text-xs font-bold text-foreground">{val.toFixed(3)} %</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-secondary overflow-hidden">
+                          <div
+                            className={cn("h-full rounded-full", color)}
+                            style={{ width: `${customer.creditcardDisagio! > 0 ? (val / customer.creditcardDisagio!) * 100 : 0}%` }}
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          )}
+
+          {/* Letzte Aktivitäten (inline preview) */}
+          <Card className="overflow-hidden">
+            <div className="h-1 bg-indigo-500" />
+            <CardHeader className="pb-2 pt-4 px-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <History className="w-4 h-4 text-indigo-500" /> Letzte Interaktionen
+                </CardTitle>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs gap-1.5 text-primary"
+                  onClick={() => setActiveTab("activities")}
+                >
+                  Alle anzeigen →
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              {timeline.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  <History className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
+                  <p className="text-xs">Noch keine Interaktionen</p>
+                  <p className="text-xs mt-1 text-muted-foreground/70">Erfasse Anrufe, E-Mails oder Notizen über die Schnellaktionen oben</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {timeline.slice(0, 5).map((item) => {
+                    const isActivity = item.type === "activity";
+                    const typeLabel: Record<string, string> = {
+                      call: "Anruf", email: "E-Mail", meeting: "Meeting", follow_up: "Follow-up",
+                      note: "Notiz", renewal: "Verlängerung",
+                    };
+                    const typeColor: Record<string, string> = {
+                      call: "text-green-600 dark:text-green-400",
+                      email: "text-cyan-600 dark:text-cyan-400",
+                      meeting: "text-indigo-600 dark:text-indigo-400",
+                      follow_up: "text-amber-600 dark:text-amber-400",
+                      note: "text-muted-foreground",
+                      renewal: "text-orange-600 dark:text-orange-400",
+                    };
+                    return (
+                      <div key={item.id} className="flex items-start gap-3 px-3 py-2 rounded-lg bg-secondary/30 border border-border">
+                        <div className="shrink-0 mt-0.5">
+                          {isActivity ? (
+                            item.status === "done"
+                              ? <CheckCircle2 className="w-4 h-4 text-green-500" />
+                              : <Clock className="w-4 h-4 text-amber-500" />
+                          ) : (
+                            <FileText className="w-4 h-4 text-muted-foreground" />
                           )}
-                        </td>
-                        <td className="px-3 py-2 hidden sm:table-cell">
-                          <span className={cn("text-xs font-semibold", sc.color)}>{sc.label}</span>
-                        </td>
-                        <td className="px-3 py-2 hidden sm:table-cell">
-                          <span className={cn("text-xs font-semibold", pc.color)}>{pc.label}</span>
-                        </td>
-                        <td className="px-3 py-2 hidden md:table-cell">
-                          <span className="text-xs text-muted-foreground">
-                            {new Date(t.createdAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
-                          </span>
-                        </td>
-                        <td className="px-3 py-2 text-right">
-                          <div className="flex items-center justify-end gap-1">
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className={cn("text-[10px] font-bold uppercase tracking-wide", typeColor[item.subtype] ?? "text-muted-foreground")}>
+                              {typeLabel[item.subtype] ?? item.subtype}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {new Date(item.date).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
+                            </span>
+                          </div>
+                          <p className="text-sm text-foreground truncate mt-0.5">{item.title}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* KI-Zusammenfassung */}
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-primary" /> KI-Zusammenfassung
+                </CardTitle>
+                <div className="flex items-center gap-2">
+                  {aiSummary && (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs gap-1.5" onClick={copyToClipboard}>
+                      {copied ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                      {copied ? "Kopiert!" : "Kopieren"}
+                    </Button>
+                  )}
+                  <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={fetchAiSummary} disabled={aiLoading}>
+                    {aiLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                    {aiLoading ? "Analysiere…" : "Zusammenfassen"}
+                  </Button>
+                </div>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              {!aiSummary && !aiLoading && !aiError && (
+                <div className="text-center py-5 text-muted-foreground">
+                  <Sparkles className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
+                  <p className="text-xs">KI-Zusammenfassung aller Notizen und Aktivitäten</p>
+                </div>
+              )}
+              {aiLoading && (
+                <div className="flex items-center gap-3 py-4 text-muted-foreground">
+                  <Loader2 className="w-4 h-4 animate-spin shrink-0" />
+                  <p className="text-sm">KI analysiert…</p>
+                </div>
+              )}
+              {aiError && (
+                <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p>{aiError}</p>
+                </div>
+              )}
+              {aiSummary && !aiLoading && (
+                <div className="p-3 rounded-lg bg-primary/5 border border-primary/10">
+                  <p className="text-sm text-foreground leading-relaxed">{aiSummary}</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* KI-Besuchsbericht */}
+          <Card className="overflow-hidden">
+            <div className="h-1 bg-violet-500" />
+            <CardHeader className="pb-2 pt-4 px-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Sparkles className="w-4 h-4 text-violet-500" /> KI-Besuchsbericht
+                </CardTitle>
+                {visitReport && (
+                  <div className="flex items-center gap-2">
+                    <Button size="sm" variant="ghost" className="h-7 text-xs gap-1.5" onClick={copyVisitReport}>
+                      {visitReportCopied ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
+                      {visitReportCopied ? "Kopiert!" : "Kopieren"}
+                    </Button>
+                    <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5" onClick={extractTodosHandler} disabled={todosExtracting}>
+                      {todosExtracting ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckSquare className="w-3 h-3" />}
+                      To-dos erstellen
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4 space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="visit-notes">Besuchsnotizen</Label>
+                <Textarea
+                  id="visit-notes"
+                  value={visitNotes}
+                  onChange={(e) => setVisitNotes(e.target.value)}
+                  placeholder="Was wurde beim Besuch besprochen? Stichpunkte reichen…"
+                  rows={3}
+                  className="resize-none"
+                />
+              </div>
+              <Button
+                size="sm"
+                className="gap-1.5"
+                onClick={generateVisitReportHandler}
+                disabled={visitReportLoading || !visitNotes.trim()}
+              >
+                {visitReportLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                {visitReportLoading ? "Generiere…" : "KI-Bericht generieren"}
+              </Button>
+              {visitReportError && (
+                <div className="flex items-start gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <p>{visitReportError}</p>
+                </div>
+              )}
+              {visitReport && !visitReportLoading && (
+                <div className="p-3 rounded-lg bg-violet-50 dark:bg-violet-950/20 border border-violet-200/50 dark:border-violet-800/30">
+                  <pre className="text-sm text-foreground leading-relaxed whitespace-pre-wrap font-sans">{visitReport}</pre>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ══════════════════════════════════════════════════════════════
+            TAB: AKTIVITÄTEN
+        ══════════════════════════════════════════════════════════════ */}
+        <TabsContent value="activities" className="mt-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              {pendingActs > 0 ? (
+                <span className="font-semibold text-amber-600 dark:text-amber-400">{pendingActs} offen</span>
+              ) : (
+                <span className="font-semibold text-green-600 dark:text-green-400">Alles erledigt ✓</span>
+              )}
+              {activities.length > 0 && <span className="text-muted-foreground"> · {activities.length} gesamt</span>}
+            </p>
+            <Button size="sm" className="gap-2 h-10 min-w-[44px]" onClick={() => setActDialog(true)} data-testid="button-add-activity">
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Aktivität</span>
+            </Button>
+          </div>
+
+          {/* Quick-log buttons */}
+          <div className="flex gap-2 flex-wrap">
+            <Button size="sm" variant="outline" className="gap-1.5 h-9 text-xs"
+              onClick={() => { setQuickDialogType("call"); setQuickDialogOpen(true); }}>
+              <Phone className="w-3.5 h-3.5 text-green-600" /> Anruf erfassen
+            </Button>
+            <Button size="sm" variant="outline" className="gap-1.5 h-9 text-xs"
+              onClick={() => { setQuickDialogType("email"); setQuickDialogOpen(true); }}>
+              <Mail className="w-3.5 h-3.5 text-blue-600" /> E-Mail erfassen
+            </Button>
+          </div>
+
+          {aLoad ? (
+            <div className="space-y-4 pl-6">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
+          ) : activities.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">Noch keine Aktivitäten</p>
+              <p className="text-xs mt-1">Erstelle eine Aufgabe oder erfasse einen Anruf</p>
+              <Button size="sm" className="mt-3 gap-2" onClick={() => setActDialog(true)}>
+                <Plus className="w-3.5 h-3.5" /> Erste Aktivität erstellen
+              </Button>
+            </div>
+          ) : (
+            <div className="relative pl-6">
+              <div className="absolute left-[9px] top-3 bottom-3 w-[2px] bg-border rounded-full" />
+              <div className="space-y-4">
+                {[...activities]
+                  .sort((a, b) => {
+                    if (a.done !== b.done) return a.done ? 1 : -1;
+                    const da = a.dueDate ?? a.createdAt ?? "";
+                    const db = b.dueDate ?? b.createdAt ?? "";
+                    return db > da ? 1 : -1;
+                  })
+                  .map((a) => {
+                    const isOverdue = !a.done && a.dueDate && new Date(a.dueDate) < new Date();
+                    return (
+                      <div
+                        key={a.id}
+                        className={cn("relative flex gap-4", a.done && "opacity-60")}
+                        data-testid={`activity-card-${a.id}`}
+                      >
+                        <button
+                          onClick={() => toggleActivity.mutate({ aid: a.id, done: !a.done })}
+                          className="absolute -left-6 top-3 shrink-0 transition-colors"
+                          data-testid={`button-toggle-activity-${a.id}`}
+                          title={a.done ? "Als offen markieren" : "Als erledigt markieren"}
+                        >
+                          {a.done ? (
+                            <div className="w-[18px] h-[18px] rounded-full bg-green-500 flex items-center justify-center ring-2 ring-background">
+                              <CheckSquare className="w-3 h-3 text-white" />
+                            </div>
+                          ) : (
+                            <div className={cn(
+                              "w-[18px] h-[18px] rounded-full ring-2 ring-background border-2 transition-colors",
+                              isOverdue
+                                ? "bg-destructive/20 border-destructive"
+                                : "bg-background border-primary hover:bg-primary/10",
+                            )} />
+                          )}
+                        </button>
+                        <div className={cn(
+                          "flex-1 rounded-lg border bg-card p-3 min-w-0",
+                          isOverdue && "border-destructive/40",
+                        )}>
+                          <div className="flex items-start gap-2">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <span className={cn(
+                                  "text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded",
+                                  a.done
+                                    ? "bg-muted text-muted-foreground"
+                                    : cn("bg-primary/10", ACT_CLASS[a.type] ?? "text-muted-foreground"),
+                                )}>
+                                  {ACT_TYPES[a.type] ?? a.type}
+                                </span>
+                                {a.dueDate && (
+                                  <span className={cn(
+                                    "text-[10px] flex items-center gap-1",
+                                    isOverdue ? "text-destructive font-semibold" : "text-muted-foreground",
+                                  )}>
+                                    <Calendar className="w-2.5 h-2.5" />
+                                    {new Date(a.dueDate).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}
+                                    {a.dueTime ? ` · ${a.dueTime} Uhr` : ""}
+                                    {isOverdue && <span className="font-bold"> · Überfällig</span>}
+                                  </span>
+                                )}
+                                {a.calendarEventId && (
+                                  <span className="text-[10px] flex items-center gap-1 text-green-600 dark:text-green-400">
+                                    <CalendarCheck className="w-2.5 h-2.5" /> Google Kalender
+                                  </span>
+                                )}
+                              </div>
+                              <p className={cn("text-sm text-foreground", a.done && "line-through text-muted-foreground")}>
+                                {a.description}
+                              </p>
+                            </div>
                             <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
-                              onClick={() => { setEditTicket(t); setTicketDialogOpen(true); }}
-                            >
-                              <Pencil className="w-3 h-3" />
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                              onClick={() => setDeleteTicketId(t.id)}
+                              variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive -mt-0.5 -mr-0.5"
+                              onClick={() => setDeleteActId(a.id)}
+                              data-testid={`button-delete-activity-${a.id}`}
                             >
                               <Trash2 className="w-3 h-3" />
                             </Button>
                           </div>
-                        </td>
-                      </tr>
+                        </div>
+                      </div>
                     );
                   })}
-                </tbody>
-              </table>
+              </div>
             </div>
           )}
-        </CardContent>
-      </Card>
+
+          {/* Wiedervorlagen */}
+          <div className="pt-2">
+            <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+              <p className="text-sm font-semibold flex items-center gap-2">
+                <Bell className="w-4 h-4 text-amber-500" /> Wiedervorlagen
+                {customerReminders.filter((r) => r.status !== "done").length > 0 && (
+                  <span className="flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">
+                    {customerReminders.filter((r) => r.status !== "done").length}
+                  </span>
+                )}
+              </p>
+              <Button size="sm" variant="outline" className="h-8 text-xs gap-1.5"
+                onClick={() => { setEditReminder(null); setReminderDialogOpen(true); }}>
+                <Plus className="w-3 h-3" /> Wiedervorlage
+              </Button>
+            </div>
+            {customerReminders.length === 0 ? (
+              <div className="text-center py-6 text-muted-foreground">
+                <Bell className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
+                <p className="text-xs">Noch keine Wiedervorlagen</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                {[...customerReminders]
+                  .sort((a, b) => {
+                    if (a.status === "done" && b.status !== "done") return 1;
+                    if (a.status !== "done" && b.status === "done") return -1;
+                    return a.dueDate > b.dueDate ? 1 : -1;
+                  })
+                  .map((r) => {
+                    const today = new Date().toISOString().split("T")[0];
+                    const isOverdue = r.dueDate < today && r.status !== "done";
+                    const isToday = r.dueDate === today && r.status !== "done";
+                    const days = Math.ceil((new Date(r.dueDate).getTime() - new Date().setHours(0,0,0,0)) / 86400000);
+                    return (
+                      <div
+                        key={r.id}
+                        className={cn(
+                          "flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors",
+                          r.status === "done"
+                            ? "bg-muted/30 border-border opacity-60"
+                            : isOverdue
+                            ? "bg-destructive/5 border-destructive/30"
+                            : isToday
+                            ? "bg-amber-50/60 dark:bg-amber-950/20 border-amber-200/40 dark:border-amber-800/30"
+                            : "bg-secondary/30 border-border"
+                        )}
+                      >
+                        <button
+                          onClick={() => r.status !== "done" && markReminderDone.mutate(r.id)}
+                          className={cn(
+                            "shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
+                            r.status === "done"
+                              ? "bg-green-500 border-green-500"
+                              : isOverdue
+                              ? "border-destructive hover:bg-destructive/20"
+                              : "border-muted-foreground hover:border-green-500"
+                          )}
+                        >
+                          {r.status === "done" && <Check className="w-3 h-3 text-white" />}
+                        </button>
+                        <div className="flex-1 min-w-0">
+                          <p className={cn("text-sm text-foreground truncate", r.status === "done" && "line-through text-muted-foreground")}>
+                            {r.description}
+                          </p>
+                          <p className={cn("text-[10px] font-semibold mt-0.5",
+                            isOverdue ? "text-destructive" : isToday ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
+                          )}>
+                            {r.status === "done" ? "Erledigt"
+                              : isOverdue ? `Überfällig (${new Date(r.dueDate).toLocaleDateString("de-DE")})`
+                              : isToday ? "Heute fällig"
+                              : `Fällig: ${new Date(r.dueDate).toLocaleDateString("de-DE")} (in ${days}d)`}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          {r.status !== "done" && (
+                            <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                              onClick={() => { setEditReminder(r); setReminderDialogOpen(true); }}>
+                              <Pencil className="w-3 h-3" />
+                            </Button>
+                          )}
+                          <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                            onClick={() => setDeleteReminderId(r.id)}>
+                            <Trash2 className="w-3 h-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    );
+                  })}
+              </div>
+            )}
+          </div>
+        </TabsContent>
+
+        {/* ══════════════════════════════════════════════════════════════
+            TAB: NOTIZEN
+        ══════════════════════════════════════════════════════════════ */}
+        <TabsContent value="notes" className="mt-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              {notes.length === 0 ? "Noch keine Notizen" : `${notes.length} Notiz${notes.length !== 1 ? "en" : ""}`}
+            </p>
+            <Button size="sm" className="gap-2 h-10 min-w-[44px]" onClick={() => setNoteDialog(true)} data-testid="button-add-note">
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Notiz</span>
+            </Button>
+          </div>
+
+          {nLoad ? (
+            <div className="space-y-2">{[1, 2].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div>
+          ) : notes.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <StickyNote className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">Noch keine Notizen</p>
+              <p className="text-xs mt-1">Halte Gespräche, Meetings und wichtige Infos fest</p>
+              <Button size="sm" className="mt-3 gap-2" onClick={() => setNoteDialog(true)}>
+                <Plus className="w-3.5 h-3.5" /> Erste Notiz erstellen
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {[...notes].reverse().map((n) => (
+                <Card key={n.id} data-testid={`note-card-${n.id}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                          <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
+                            {NOTE_TYPES[n.type] ?? n.type}
+                          </span>
+                          <span className="text-[10px] text-muted-foreground">
+                            {new Date(n.createdAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
+                          </span>
+                          {n.updatedAt && n.updatedAt !== n.createdAt && (
+                            <span className="text-[10px] text-muted-foreground/60">
+                              · bearbeitet {new Date(n.updatedAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short" })}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-sm font-semibold text-foreground">{n.title}</p>
+                        <div
+                          className="text-sm text-muted-foreground mt-1 prose prose-sm dark:prose-invert max-w-none [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-primary [&_a]:underline"
+                          dangerouslySetInnerHTML={{ __html: n.content }}
+                        />
+                      </div>
+                      <Button
+                        variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => setDeleteNoteId(n.id)}
+                        data-testid={`button-delete-note-${n.id}`}
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* ══════════════════════════════════════════════════════════════
+            TAB: VERTRAG
+        ══════════════════════════════════════════════════════════════ */}
+        <TabsContent value="contracts" className="mt-4 space-y-4">
+          {/* Contract overview card */}
+          <ContractCard
+            contractProduct={contractForm.contractProduct || customer.contractProduct}
+            contractStart={contractForm.contractStart || customer.contractStart}
+            contractEnd={contractForm.contractEnd || customer.contractEnd}
+            contractTermMonths={contractForm.contractTermMonths ? parseInt(contractForm.contractTermMonths, 10) : customer.contractTermMonths}
+            cancellationNoticeDays={contractForm.cancellationNoticeDays ? parseInt(contractForm.cancellationNoticeDays, 10) : customer.cancellationNoticeDays}
+            terminalsJson={terminals.length > 0 ? JSON.stringify(terminals) : customer.terminals}
+          />
+
+          {/* Edit forms */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Vertrag bearbeiten */}
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Calendar className="w-4 h-4 text-primary" /> Vertrag bearbeiten
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 space-y-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="contract-product">Produkt</Label>
+                  <Input
+                    id="contract-product"
+                    value={contractForm.contractProduct}
+                    onChange={(e) => setContractForm((f) => ({ ...f, contractProduct: e.target.value }))}
+                    placeholder="z.B. EC-Terminal stationär"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="contract-start">Vertragsbeginn</Label>
+                    <Input
+                      id="contract-start"
+                      type="date"
+                      value={contractForm.contractStart}
+                      onChange={(e) => {
+                        const start = e.target.value;
+                        setContractForm((f) => {
+                          const months = f.contractTermMonths ? parseInt(f.contractTermMonths, 10) : null;
+                          const newEnd = start && months ? calculateContractEnd(start, months) : f.contractEnd;
+                          return { ...f, contractStart: start, contractEnd: newEnd };
+                        });
+                      }}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="contract-term">Laufzeit (Monate)</Label>
+                    <Input
+                      id="contract-term"
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={contractForm.contractTermMonths}
+                      onChange={(e) => {
+                        const months = e.target.value;
+                        setContractForm((f) => {
+                          const m = parseInt(months, 10);
+                          const newEnd = f.contractStart && m > 0 ? calculateContractEnd(f.contractStart, m) : f.contractEnd;
+                          return { ...f, contractTermMonths: months, contractEnd: newEnd };
+                        });
+                      }}
+                      placeholder="z.B. 24"
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="contract-end">Vertragsende</Label>
+                  <Input
+                    id="contract-end"
+                    type="date"
+                    value={contractForm.contractEnd}
+                    onChange={(e) => setContractForm((f) => ({ ...f, contractEnd: e.target.value }))}
+                  />
+                  {contractDaysLeft !== null && contractForm.contractEnd && (
+                    <div className={cn("flex items-center gap-1.5 text-xs font-semibold mt-1", contractStatusColor)}>
+                      {contractStatusIcon}
+                      {contractDaysLeft < 0
+                        ? `Abgelaufen vor ${Math.abs(contractDaysLeft)} Tagen`
+                        : contractDaysLeft === 0
+                        ? "Läuft heute ab!"
+                        : `Noch ${contractDaysLeft} Tage`}
+                    </div>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="contract-notice">Kündigungsfrist (Tage)</Label>
+                  <Input
+                    id="contract-notice"
+                    type="number"
+                    min="0"
+                    step="1"
+                    value={contractForm.cancellationNoticeDays}
+                    onChange={(e) => setContractForm((f) => ({ ...f, cancellationNoticeDays: e.target.value }))}
+                    placeholder="z.B. 30"
+                  />
+                  {cancellationDeadline && (
+                    <p className="text-[11px] text-muted-foreground">
+                      Kündigungsstichtag:{" "}
+                      <strong className={cn(
+                        getDaysUntilEnd(cancellationDeadline) < 14 && getDaysUntilEnd(cancellationDeadline) >= 0
+                          ? "text-red-600 dark:text-red-400"
+                          : ""
+                      )}>
+                        {new Date(cancellationDeadline).toLocaleDateString("de-DE")}
+                      </strong>
+                    </p>
+                  )}
+                </div>
+                <div className="flex gap-2 pt-1">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="flex-1 h-9 text-xs gap-1.5"
+                    onClick={saveContractSettings}
+                    disabled={contractSaving}
+                  >
+                    {contractSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                    Speichern
+                  </Button>
+                  {contractForm.contractEnd && contractDaysLeft !== null && contractDaysLeft <= 60 && contractDaysLeft >= 0 && (
+                    <Button
+                      size="sm"
+                      className="flex-1 h-9 text-xs gap-1.5 bg-amber-600 hover:bg-amber-700"
+                      onClick={createRenewalTask}
+                    >
+                      <RefreshCw className="w-3 h-3" /> Verlängerungsaufgabe
+                    </Button>
+                  )}
+                  {contractForm.contractEnd && (contractDaysLeft === null || contractDaysLeft > 60) && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="flex-1 h-9 text-xs gap-1.5"
+                      onClick={createRenewalTask}
+                    >
+                      <RefreshCw className="w-3 h-3" /> Verlängerungsaufgabe
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Provisions-Einstellungen */}
+            <Card>
+              <CardHeader className="pb-2 pt-4 px-4">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Settings2 className="w-4 h-4 text-primary" /> Provisions-Einstellungen
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="px-4 pb-4 space-y-3">
+                <p className="text-[11px] text-muted-foreground">
+                  Standard-Werte für neue Provisionen. Werden im Provisions-Dialog automatisch vorausgefüllt.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="prov-disagio">Standard-Disagio (%)</Label>
+                    <Input
+                      id="prov-disagio"
+                      type="number"
+                      min="0"
+                      step="0.001"
+                      value={provForm.defaultDisagio}
+                      onChange={(e) => setProvForm((f) => ({ ...f, defaultDisagio: e.target.value }))}
+                      placeholder="z.B. 0.25"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="prov-volume">Standard-Volumen (€)</Label>
+                    <Input
+                      id="prov-volume"
+                      type="number"
+                      min="0"
+                      step="1"
+                      value={provForm.defaultVolume}
+                      onChange={(e) => setProvForm((f) => ({ ...f, defaultVolume: e.target.value }))}
+                      placeholder="z.B. 50000"
+                    />
+                  </div>
+                </div>
+                {provForm.defaultDisagio && provForm.defaultVolume && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Vorschau:{" "}
+                    <strong>
+                      {(parseFloat(provForm.defaultVolume) * parseFloat(provForm.defaultDisagio) / 100).toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                    </strong>{" "}
+                    Provision
+                  </p>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="w-full h-9 text-xs"
+                  onClick={saveProvisionSettings}
+                  disabled={provSaving}
+                >
+                  {provSaving ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : null}
+                  Speichern
+                </Button>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Terminals verwalten */}
+          <Card>
+            <CardHeader className="pb-2 pt-4 px-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Monitor className="w-4 h-4 text-primary" /> Terminals verwalten
+                </CardTitle>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 text-xs gap-1.5"
+                  onClick={() => { setEditTerminalIndex(null); setTerminalDialogOpen(true); }}
+                >
+                  <Plus className="w-3 h-3" /> Terminal hinzufügen
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              {terminals.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  <Monitor className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
+                  <p className="text-xs">Noch keine Terminals erfasst</p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/40 border-b border-border">
+                        <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Typ</th>
+                        <th className="text-center px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Anzahl</th>
+                        <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Status</th>
+                        <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground text-right">Aktionen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {terminals.map((t, i) => (
+                        <tr key={i} className={cn("border-b border-border last:border-0", i % 2 === 1 && "bg-muted/20")}>
+                          <td className="px-3 py-2 font-medium text-foreground">{t.type}</td>
+                          <td className="px-3 py-2 text-center font-bold text-foreground">{t.count}</td>
+                          <td className="px-3 py-2">
+                            <span className={cn("text-xs font-semibold", terminalStatusClass(t.status))}>
+                              {terminalStatusLabel(t.status)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <Button
+                                size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                onClick={() => { setEditTerminalIndex(i); setTerminalDialogOpen(true); }}
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button
+                                size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                onClick={() => handleTerminalDelete(i)}
+                                disabled={terminalsSaving}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Supportfälle */}
+          <Card className="overflow-hidden">
+            <div className="h-1 bg-red-500" />
+            <CardHeader className="pb-2 pt-4 px-4">
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <CardTitle className="text-sm font-semibold flex items-center gap-2">
+                  <Ticket className="w-4 h-4 text-red-500" /> Supportfälle
+                  {supportTickets.filter((t) => t.status === "open" || t.status === "in_progress").length > 0 && (
+                    <span className="flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-red-100 dark:bg-red-900/40 text-[10px] font-bold text-red-700 dark:text-red-300">
+                      {supportTickets.filter((t) => t.status === "open" || t.status === "in_progress").length}
+                    </span>
+                  )}
+                </CardTitle>
+                <Button size="sm" variant="outline" className="h-7 text-xs gap-1.5"
+                  onClick={() => { setEditTicket(null); setTicketDialogOpen(true); }}>
+                  <Plus className="w-3 h-3" /> Neuer Supportfall
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-4">
+              {supportTickets.length === 0 ? (
+                <div className="text-center py-6 text-muted-foreground">
+                  <Ticket className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
+                  <p className="text-xs">Keine Supportfälle für diesen Kunden</p>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="bg-muted/40 border-b border-border">
+                        <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground">Titel</th>
+                        <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground hidden sm:table-cell">Status</th>
+                        <th className="text-left px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground hidden sm:table-cell">Priorität</th>
+                        <th className="px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground text-right">Aktionen</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {supportTickets.map((t, i) => {
+                        const statusConfig: Record<string, { label: string; color: string }> = {
+                          open: { label: "🟢 Offen", color: "text-green-600 dark:text-green-400" },
+                          in_progress: { label: "🟡 In Bearbeitung", color: "text-amber-600 dark:text-amber-400" },
+                          resolved: { label: "✅ Gelöst", color: "text-blue-600 dark:text-blue-400" },
+                          closed: { label: "⚫ Geschlossen", color: "text-muted-foreground" },
+                        };
+                        const priorityConfig: Record<string, { label: string; color: string }> = {
+                          high: { label: "🔴 Hoch", color: "text-red-600 dark:text-red-400" },
+                          medium: { label: "🟡 Mittel", color: "text-amber-600 dark:text-amber-400" },
+                          low: { label: "🟢 Niedrig", color: "text-green-600 dark:text-green-400" },
+                        };
+                        const sc = statusConfig[t.status] ?? { label: t.status, color: "" };
+                        const pc = priorityConfig[t.priority] ?? { label: t.priority, color: "" };
+                        return (
+                          <tr key={t.id} className={cn("border-b border-border last:border-0", i % 2 === 1 && "bg-muted/20")}>
+                            <td className="px-3 py-2">
+                              <p className="font-medium text-foreground text-sm">{t.title}</p>
+                              {t.description && (
+                                <p className="text-xs text-muted-foreground truncate max-w-[200px]">{t.description}</p>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 hidden sm:table-cell">
+                              <span className={cn("text-xs font-semibold", sc.color)}>{sc.label}</span>
+                            </td>
+                            <td className="px-3 py-2 hidden sm:table-cell">
+                              <span className={cn("text-xs font-semibold", pc.color)}>{pc.label}</span>
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <div className="flex items-center justify-end gap-1">
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-foreground"
+                                  onClick={() => { setEditTicket(t); setTicketDialogOpen(true); }}>
+                                  <Pencil className="w-3 h-3" />
+                                </Button>
+                                <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                                  onClick={() => setDeleteTicketId(t.id)}>
+                                  <Trash2 className="w-3 h-3" />
+                                </Button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ══════════════════════════════════════════════════════════════
+            TAB: PROVISIONEN
+        ══════════════════════════════════════════════════════════════ */}
+        <TabsContent value="commissions" className="mt-4 space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm text-muted-foreground">
+              {customerCommissions.length === 0 ? "Noch keine Provisionen" : `${customerCommissions.length} Einträge`}
+            </p>
+            <div className="flex items-center gap-2">
+              <Button size="sm" variant="outline" className="gap-1.5 h-10 min-w-[44px]"
+                onClick={() => setCommissionDialogOpen(true)}>
+                <Plus className="w-3.5 h-3.5" />
+                <span className="hidden sm:inline">Neue Provision</span>
+              </Button>
+              <Link href={`/commissions?customerId=${custId}`}>
+                <a className="text-xs text-primary hover:underline font-medium whitespace-nowrap">
+                  Alle →
+                </a>
+              </Link>
+            </div>
+          </div>
+
+          {/* Stats */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col p-3 rounded-lg bg-primary/5 border border-primary/10">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Gesamt-Provision</span>
+              <span className="text-lg font-black text-primary">
+                € {customerCommissionsTotal.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <div className="flex flex-col p-3 rounded-lg bg-muted/40 border border-border">
+              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">Ø pro Provision</span>
+              <span className="text-lg font-black text-foreground">
+                {customerCommissions.length > 0
+                  ? `€ ${commissionAvg.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                  : "–"}
+              </span>
+            </div>
+          </div>
+
+          {customerCommissions.length === 0 ? (
+            <div className="text-center py-12 text-muted-foreground">
+              <Euro className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p className="text-sm font-medium">Noch keine Provisionen</p>
+              <p className="text-xs mt-1">Erfasse deine erste Provision für diesen Kunden</p>
+              <Button size="sm" className="mt-3 gap-2" onClick={() => setCommissionDialogOpen(true)}>
+                <Plus className="w-3.5 h-3.5" /> Erste Provision erfassen
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {customerCommissions.map((c) => (
+                <div
+                  key={c.id}
+                  className="flex items-center justify-between py-2 px-3 rounded-lg border border-border hover:bg-muted/40 transition-colors"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="shrink-0">
+                      <p className="text-[10px] text-muted-foreground whitespace-nowrap">
+                        {new Date(c.date).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
+                      </p>
+                      <span className={cn(
+                        "text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded",
+                        c.type === "sale" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" :
+                        c.type === "renewal" ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300" :
+                        "bg-muted text-muted-foreground"
+                      )}>
+                        {c.type === "sale" ? "Abschluss" : c.type === "renewal" ? "Verlängerung" : c.type === "upsell" ? "Upsell" : "Sonstiges"}
+                      </span>
+                    </div>
+                    {c.description && (
+                      <span className="text-xs text-foreground truncate">{c.description}</span>
+                    )}
+                  </div>
+                  <span className="text-sm font-bold text-foreground whitespace-nowrap ml-3">
+                    € {c.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* ── Dialogs ── */}
 
       {/* Support Ticket Dialog */}
       <SupportTicketDialog
@@ -1552,89 +1925,6 @@ export default function CustomerDetailPage() {
         onClose={() => setQuickDialogOpen(false)}
       />
 
-      {/* Commissions Card */}
-      <Card>
-        <CardHeader className="pb-2 pt-4 px-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-primary" /> Provisionen
-            </CardTitle>
-            <div className="flex items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-7 text-xs gap-1.5"
-                onClick={() => setCommissionDialogOpen(true)}
-              >
-                <Plus className="w-3 h-3" /> Neue Provision
-              </Button>
-              <Link href={`/commissions?customerId=${custId}`}>
-                <a className="text-xs text-primary hover:underline font-medium">
-                  Alle anzeigen →
-                </a>
-              </Link>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          {/* Total + Average */}
-          <div className="grid grid-cols-2 gap-3 mb-3">
-            <div className="flex flex-col p-3 rounded-lg bg-primary/5 border border-primary/10">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
-                Gesamt-Provision
-              </span>
-              <span className="text-lg font-black text-primary">
-                € {customerCommissionsTotal.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-              </span>
-            </div>
-            <div className="flex flex-col p-3 rounded-lg bg-muted/40 border border-border">
-              <span className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-0.5">
-                Ø pro Provision
-              </span>
-              <span className="text-lg font-black text-foreground">
-                {customerCommissions.length > 0
-                  ? `€ ${commissionAvg.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                  : "–"}
-              </span>
-            </div>
-          </div>
-
-          {/* Last 5 commissions */}
-          {customerCommissions.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              <Euro className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
-              <p className="text-xs">Noch keine Provisionen für diesen Kunden</p>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {customerCommissions.slice(0, 5).map((c) => (
-                <div
-                  key={c.id}
-                  className="flex items-center justify-between py-1.5 px-2 rounded-md hover:bg-muted/50 transition-colors"
-                >
-                  <div className="flex items-center gap-2 min-w-0">
-                    <span className="text-[10px] text-muted-foreground whitespace-nowrap">
-                      {new Date(c.date).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
-                    </span>
-                    {c.description && (
-                      <span className="text-xs text-foreground truncate">{c.description}</span>
-                    )}
-                  </div>
-                  <span className="text-sm font-bold text-foreground whitespace-nowrap ml-3">
-                    € {c.amount.toLocaleString("de-DE", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                  </span>
-                </div>
-              ))}
-              {customerCommissions.length > 5 && (
-                <p className="text-xs text-muted-foreground text-center pt-1">
-                  +{customerCommissions.length - 5} weitere
-                </p>
-              )}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       {/* Commission Dialog */}
       <CommissionDialog
         open={commissionDialogOpen}
@@ -1649,128 +1939,6 @@ export default function CustomerDetailPage() {
         editTerminal={editTerminalIndex !== null ? terminals[editTerminalIndex] : null}
         onSave={handleTerminalSave}
       />
-
-      {/* ── Wiedervorlagen ── */}
-      <Card>
-        <CardHeader className="pb-2 pt-4 px-4">
-          <div className="flex items-center justify-between flex-wrap gap-2">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <Bell className="w-4 h-4 text-amber-500" /> Wiedervorlagen
-              {customerReminders.filter((r) => r.status !== "done").length > 0 && (
-                <span className="flex items-center justify-center min-w-[20px] h-5 px-1 rounded-full bg-amber-100 dark:bg-amber-900/40 text-[10px] font-bold text-amber-700 dark:text-amber-300">
-                  {customerReminders.filter((r) => r.status !== "done").length}
-                </span>
-              )}
-            </CardTitle>
-            <Button
-              size="sm"
-              variant="outline"
-              className="h-7 text-xs gap-1.5"
-              onClick={() => { setEditReminder(null); setReminderDialogOpen(true); }}
-            >
-              <Plus className="w-3 h-3" /> Wiedervorlage hinzufügen
-            </Button>
-          </div>
-        </CardHeader>
-        <CardContent className="px-4 pb-4">
-          {customerReminders.length === 0 ? (
-            <div className="text-center py-6 text-muted-foreground">
-              <Bell className="w-6 h-6 mx-auto mb-1.5 opacity-30" />
-              <p className="text-xs">Noch keine Wiedervorlagen für diesen Kunden</p>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {[...customerReminders]
-                .sort((a, b) => {
-                  if (a.status === "done" && b.status !== "done") return 1;
-                  if (a.status !== "done" && b.status === "done") return -1;
-                  return a.dueDate > b.dueDate ? 1 : -1;
-                })
-                .map((r) => {
-                  const today = new Date().toISOString().split("T")[0];
-                  const isOverdue = r.dueDate < today && r.status !== "done";
-                  const isToday = r.dueDate === today && r.status !== "done";
-                  const days = Math.ceil((new Date(r.dueDate).getTime() - new Date().setHours(0,0,0,0)) / 86400000);
-                  return (
-                    <div
-                      key={r.id}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-lg border transition-colors",
-                        r.status === "done"
-                          ? "bg-muted/30 border-border opacity-60"
-                          : isOverdue
-                          ? "bg-destructive/5 border-destructive/30"
-                          : isToday
-                          ? "bg-amber-50/60 dark:bg-amber-950/20 border-amber-200/40 dark:border-amber-800/30"
-                          : "bg-secondary/30 border-border"
-                      )}
-                    >
-                      {/* Done toggle */}
-                      <button
-                        onClick={() => r.status !== "done" && markReminderDone.mutate(r.id)}
-                        className={cn(
-                          "shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors",
-                          r.status === "done"
-                            ? "bg-green-500 border-green-500"
-                            : isOverdue
-                            ? "border-destructive hover:bg-destructive/20"
-                            : "border-muted-foreground hover:border-green-500"
-                        )}
-                      >
-                        {r.status === "done" && <Check className="w-3 h-3 text-white" />}
-                      </button>
-
-                      {/* Content */}
-                      <div className="flex-1 min-w-0">
-                        <p className={cn(
-                          "text-sm text-foreground truncate",
-                          r.status === "done" && "line-through text-muted-foreground"
-                        )}>
-                          {r.description}
-                        </p>
-                        <p className={cn(
-                          "text-[10px] font-semibold mt-0.5",
-                          isOverdue ? "text-destructive" : isToday ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"
-                        )}>
-                          {r.status === "done"
-                            ? "Erledigt"
-                            : isOverdue
-                            ? `Überfällig (${new Date(r.dueDate).toLocaleDateString("de-DE")})`
-                            : isToday
-                            ? "Heute fällig"
-                            : `Fällig: ${new Date(r.dueDate).toLocaleDateString("de-DE")} (in ${days}d)`
-                          }
-                        </p>
-                      </div>
-
-                      {/* Actions */}
-                      <div className="flex items-center gap-1 shrink-0">
-                        {r.status !== "done" && (
-                          <Button
-                            size="sm"
-                            variant="ghost"
-                            className="h-6 px-1.5 text-[10px] text-muted-foreground hover:text-foreground"
-                            onClick={() => { setEditReminder(r); setReminderDialogOpen(true); }}
-                          >
-                            ✏️
-                          </Button>
-                        )}
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          className="h-6 w-6 p-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => setDeleteReminderId(r.id)}
-                        >
-                          <Trash2 className="w-3 h-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Reminder Dialog */}
       <ReminderDialog
@@ -1798,211 +1966,6 @@ export default function CustomerDetailPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-
-      {/* Tabs: Notes / Activities */}
-      <div>
-        {/* Tab bar */}
-        <div className="flex border-b border-border mb-4">
-          {([
-            { key: "notes", label: "Notizen", count: notes.length },
-            { key: "activities", label: "Aktivitäten", count: pendingActs > 0 ? pendingActs : activities.length },
-          ] as const).map(({ key, label, count }) => (
-            <button
-              key={key}
-              onClick={() => setActiveTab(key)}
-              data-testid={`tab-${key}`}
-              className={cn(
-                "flex items-center gap-2 px-4 py-2.5 text-sm font-semibold border-b-2 transition-colors",
-                activeTab === key
-                  ? "border-primary text-primary"
-                  : "border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {label}
-              <span className={cn(
-                "text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center",
-                activeTab === key ? "bg-primary text-primary-foreground" : "bg-secondary text-muted-foreground"
-              )}>
-                {count}
-              </span>
-            </button>
-          ))}
-        </div>
-
-        {/* Notes panel */}
-        {activeTab === "notes" && (
-          <div className="space-y-3">
-            <div className="flex justify-end">
-              <Button size="sm" className="gap-2" onClick={() => setNoteDialog(true)} data-testid="button-add-note">
-                <Plus className="w-3.5 h-3.5" /> Notiz hinzufügen
-              </Button>
-            </div>
-            {nLoad ? (
-              <div className="space-y-2">{[1, 2].map((i) => <Skeleton key={i} className="h-20 w-full" />)}</div>
-            ) : notes.length === 0 ? (
-              <div className="text-center py-10 text-muted-foreground">
-                <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Noch keine Notizen</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {[...notes].reverse().map((n) => (
-                  <Card key={n.id} data-testid={`note-card-${n.id}`}>
-                    <CardContent className="p-4">
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                            <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground">
-                              {NOTE_TYPES[n.type] ?? n.type}
-                            </span>
-                            <span className="text-[10px] text-muted-foreground">
-                              {new Date(n.createdAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short", year: "numeric" })}
-                            </span>
-                            {n.updatedAt && n.updatedAt !== n.createdAt && (
-                              <span className="text-[10px] text-muted-foreground/60">
-                                · bearbeitet {new Date(n.updatedAt).toLocaleDateString("de-DE", { day: "2-digit", month: "short" })}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-sm font-semibold text-foreground">{n.title}</p>
-                          {/* Render rich-text HTML content */}
-                          <div
-                            className="text-sm text-muted-foreground mt-1 prose prose-sm dark:prose-invert max-w-none [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:list-decimal [&_ol]:pl-4 [&_a]:text-primary [&_a]:underline"
-                            dangerouslySetInnerHTML={{ __html: n.content }}
-                          />
-                        </div>
-                        <Button
-                          variant="ghost" size="icon" className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
-                          onClick={() => setDeleteNoteId(n.id)}
-                          data-testid={`button-delete-note-${n.id}`}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* Activities panel — Timeline */}
-        {activeTab === "activities" && (
-          <div className="space-y-3">
-            <div className="flex justify-end">
-              <Button size="sm" className="gap-2" onClick={() => setActDialog(true)} data-testid="button-add-activity">
-                <Plus className="w-3.5 h-3.5" /> Aktivität hinzufügen
-              </Button>
-            </div>
-            {aLoad ? (
-              <div className="space-y-4 pl-6">{[1, 2, 3].map((i) => <Skeleton key={i} className="h-14 w-full" />)}</div>
-            ) : activities.length === 0 ? (
-              <div className="text-center py-10 text-muted-foreground">
-                <Calendar className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <p className="text-sm">Noch keine Aktivitäten</p>
-              </div>
-            ) : (
-              <div className="relative pl-6">
-                {/* Vertical line */}
-                <div className="absolute left-[9px] top-3 bottom-3 w-[2px] bg-border rounded-full" />
-
-                <div className="space-y-4">
-                  {[...activities]
-                    .sort((a, b) => {
-                      // Sort: undone first (by dueDate desc), then done
-                      if (a.done !== b.done) return a.done ? 1 : -1;
-                      const da = a.dueDate ?? a.createdAt ?? "";
-                      const db = b.dueDate ?? b.createdAt ?? "";
-                      return db > da ? 1 : -1;
-                    })
-                    .map((a) => {
-                      const isOverdue = !a.done && a.dueDate && new Date(a.dueDate) < new Date();
-                      return (
-                        <div
-                          key={a.id}
-                          className={cn("relative flex gap-4", a.done && "opacity-60")}
-                          data-testid={`activity-card-${a.id}`}
-                        >
-                          {/* Timeline dot */}
-                          <button
-                            onClick={() => toggleActivity.mutate({ aid: a.id, done: !a.done })}
-                            className="absolute -left-6 top-3 shrink-0 transition-colors"
-                            data-testid={`button-toggle-activity-${a.id}`}
-                            title={a.done ? "Als offen markieren" : "Als erledigt markieren"}
-                          >
-                            {a.done ? (
-                              <div className="w-[18px] h-[18px] rounded-full bg-green-500 flex items-center justify-center ring-2 ring-background">
-                                <CheckSquare className="w-3 h-3 text-white" />
-                              </div>
-                            ) : (
-                              <div className={cn(
-                                "w-[18px] h-[18px] rounded-full ring-2 ring-background border-2 transition-colors",
-                                isOverdue
-                                  ? "bg-destructive/20 border-destructive"
-                                  : "bg-background border-primary hover:bg-primary/10",
-                              )} />
-                            )}
-                          </button>
-
-                          {/* Card */}
-                          <div className={cn(
-                            "flex-1 rounded-lg border bg-card p-3 min-w-0",
-                            isOverdue && "border-destructive/40",
-                          )}>
-                            <div className="flex items-start gap-2">
-                              <div className="flex-1 min-w-0">
-                                {/* Type badge + date */}
-                                <div className="flex items-center gap-2 flex-wrap mb-1">
-                                  <span className={cn(
-                                    "text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded",
-                                    a.done
-                                      ? "bg-muted text-muted-foreground"
-                                      : cn("bg-primary/10", ACT_CLASS[a.type] ?? "text-muted-foreground"),
-                                  )}>
-                                    {ACT_TYPES[a.type] ?? a.type}
-                                  </span>
-                                  {a.dueDate && (
-                                    <span className={cn(
-                                      "text-[10px] flex items-center gap-1",
-                                      isOverdue ? "text-destructive font-semibold" : "text-muted-foreground",
-                                    )}>
-                                      <Calendar className="w-2.5 h-2.5" />
-                                      {new Date(a.dueDate).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}
-                                      {a.dueTime ? ` · ${a.dueTime} Uhr` : ""}
-                                      {isOverdue && <span className="font-bold"> · Überfällig</span>}
-                                    </span>
-                                  )}
-                                  {a.calendarEventId && (
-                                    <span className="text-[10px] flex items-center gap-1 text-green-600 dark:text-green-400">
-                                      <CalendarCheck className="w-2.5 h-2.5" /> Google Kalender
-                                    </span>
-                                  )}
-                                </div>
-                                {/* Description */}
-                                <p className={cn("text-sm text-foreground", a.done && "line-through text-muted-foreground")}>
-                                  {a.description}
-                                </p>
-                              </div>
-                              {/* Delete */}
-                              <Button
-                                variant="ghost" size="icon" className="h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive -mt-0.5 -mr-0.5"
-                                onClick={() => setDeleteActId(a.id)}
-                                data-testid={`button-delete-activity-${a.id}`}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
 
       {/* Note Dialog */}
       <Dialog open={noteDialog} onOpenChange={setNoteDialog}>
@@ -2050,20 +2013,31 @@ export default function CustomerDetailPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 pt-2">
-            <div className="space-y-1.5">
-              <Label>Typ</Label>
-              <Select value={actForm.type} onValueChange={(v) => setActForm((f) => ({ ...f, type: v as any }))}>
-                <SelectTrigger data-testid="select-activity-type"><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  {Object.entries(ACT_TYPES).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
-                </SelectContent>
-              </Select>
+            {/* Quick type buttons */}
+            <div className="flex gap-2 flex-wrap">
+              {Object.entries(ACT_TYPES).map(([v, l]) => (
+                <button
+                  key={v}
+                  type="button"
+                  onClick={() => setActForm((f) => ({ ...f, type: v as any }))}
+                  className={cn(
+                    "px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors",
+                    actForm.type === v
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background text-muted-foreground border-border hover:border-primary hover:text-foreground"
+                  )}
+                >
+                  {l}
+                </button>
+              ))}
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="a-desc">Beschreibung</Label>
               <Input id="a-desc" value={actForm.description}
                 onChange={(e) => setActForm((f) => ({ ...f, description: e.target.value }))}
-                placeholder="Was wurde besprochen / geplant? (Pflichtfeld)" data-testid="input-activity-description" />
+                placeholder="Was wurde besprochen / geplant? (Pflichtfeld)" data-testid="input-activity-description"
+                autoFocus
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="a-when">Wann? <span className="text-muted-foreground font-normal">(Freitext)</span></Label>
@@ -2190,5 +2164,6 @@ export default function CustomerDetailPage() {
         </AlertDialogContent>
       </AlertDialog>
     </div>
+    </TooltipProvider>
   );
 }

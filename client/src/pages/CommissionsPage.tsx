@@ -495,8 +495,12 @@ export default function CommissionsPage() {
           {filtered.length === 0 ? (
             <div className="text-center py-12 text-muted-foreground">
               <Euro className="w-8 h-8 mx-auto mb-2 opacity-30" />
-              <p className="text-sm">Keine Provisionen gefunden</p>
-              <p className="text-xs mt-1">Füge deine erste Provision hinzu</p>
+              <p className="text-sm font-medium">Keine Provisionen gefunden</p>
+              {filterMonth !== "all" || filterCustomer !== "all" || filterType !== "all" ? (
+                <p className="text-xs mt-1">Filter anpassen oder zurücksetzen</p>
+              ) : (
+                <p className="text-xs mt-1">Erfasse deine erste Provision über einen Kunden</p>
+              )}
             </div>
           ) : (
             <div className="overflow-x-auto">

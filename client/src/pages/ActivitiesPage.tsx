@@ -299,7 +299,8 @@ export default function ActivitiesPage() {
         <div className="text-center py-20 text-muted-foreground">
           <Activity className="w-10 h-10 mx-auto mb-3 opacity-30" />
           <p className="text-sm font-medium">Noch keine Aufgaben</p>
-          <p className="text-xs mt-1">Füge Aktivitäten über die Kundendetailseite hinzu</p>
+          <p className="text-xs mt-1">Öffne einen Kunden und erstelle dort Aktivitäten</p>
+          <p className="text-xs mt-0.5 text-muted-foreground/60">Anrufe, Follow-ups, Meetings und mehr</p>
         </div>
       ) : (
         <>

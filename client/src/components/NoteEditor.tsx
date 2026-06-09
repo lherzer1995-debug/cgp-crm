@@ -7,7 +7,7 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
-  Bold, Italic, List, Link2, Type, AlignLeft,
+  Bold, Italic, List, Link2, Type, AlignLeft, FileText, Phone, Users, Mail,
 } from "lucide-react";
 
 interface NoteEditorProps {
@@ -22,10 +22,10 @@ interface NoteEditorProps {
 }
 
 const NOTE_TYPES = [
-  { value: "note", label: "Notiz" },
-  { value: "call", label: "Anruf" },
-  { value: "meeting", label: "Meeting" },
-  { value: "email", label: "E-Mail" },
+  { value: "note", label: "Notiz", icon: FileText, color: "text-muted-foreground" },
+  { value: "call", label: "Anruf", icon: Phone, color: "text-green-600" },
+  { value: "meeting", label: "Meeting", icon: Users, color: "text-indigo-600" },
+  { value: "email", label: "E-Mail", icon: Mail, color: "text-cyan-600" },
 ];
 
 // Simple rich-text toolbar that operates on a contenteditable div
@@ -86,30 +86,42 @@ export default function NoteEditor({
         />
       </div>
 
-      {/* Type + Template row */}
-      <div className="flex gap-3 flex-wrap">
-        <div className="space-y-1.5 flex-1 min-w-[140px]">
+      {/* Type pills + Template row */}
+      <div className="space-y-3">
+        <div className="space-y-1.5">
           <Label>Typ</Label>
-          <Select value={type} onValueChange={onTypeChange}>
-            <SelectTrigger data-testid="select-note-type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {NOTE_TYPES.map((t) => (
-                <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <div className="flex gap-2 flex-wrap">
+            {NOTE_TYPES.map((t) => {
+              const Icon = t.icon;
+              return (
+                <button
+                  key={t.value}
+                  type="button"
+                  data-testid={t.value === type ? "select-note-type-active" : undefined}
+                  onClick={() => onTypeChange(t.value)}
+                  className={cn(
+                    "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold border transition-colors",
+                    type === t.value
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background text-muted-foreground border-border hover:border-primary hover:text-foreground"
+                  )}
+                >
+                  <Icon className={cn("w-3 h-3", type === t.value ? "text-primary-foreground" : t.color)} />
+                  {t.label}
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         {templates.length > 0 && (
-          <div className="space-y-1.5 flex-1 min-w-[140px]">
-            <Label>Template</Label>
+          <div className="space-y-1.5">
+            <Label className="text-xs text-muted-foreground">Template (optional)</Label>
             <Select onValueChange={(v) => {
               const tpl = templates.find((t) => String(t.id) === v);
               if (tpl) applyTemplate(tpl.content);
             }}>
-              <SelectTrigger>
+              <SelectTrigger className="h-8 text-xs">
                 <SelectValue placeholder="Template wählen…" />
               </SelectTrigger>
               <SelectContent>
