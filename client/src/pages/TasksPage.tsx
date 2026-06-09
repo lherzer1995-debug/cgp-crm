@@ -32,22 +32,14 @@ import type { Activity as ActivityType, Customer } from "@shared/schema";
 
 const ACT_TYPES: Record<string, string> = {
   call: "Anruf",
-  demo: "Demo",
-  proposal: "Angebot",
   follow_up: "Follow-up",
   meeting: "Meeting",
   email: "E-Mail",
-  closed_won: "Abschluss ✓",
-  closed_lost: "Verloren",
 };
 
 const ACT_CLASS: Record<string, string> = {
   call: "act-call",
-  demo: "act-demo",
-  proposal: "act-proposal",
   follow_up: "act-follow_up",
-  closed_won: "act-closed_won",
-  closed_lost: "act-closed_lost",
   meeting: "text-indigo-600 dark:text-indigo-400",
   email: "text-cyan-600 dark:text-cyan-400",
 };

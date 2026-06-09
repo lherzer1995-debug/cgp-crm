@@ -1,9 +1,7 @@
 import type { Express } from "express";
 import type { Server } from "http";
-import { storage, db } from "./storage";
+import { storage } from "./storage";
 import { insertCustomerSchema, insertNoteSchema, insertActivitySchema, insertNoteTemplateSchema, updateSettingsSchema, insertCommissionSchema, insertActivityTemplateSchema } from "@shared/schema";
-import { customers } from "@shared/schema";
-import { eq } from "drizzle-orm";
 import multer from "multer";
 import mammoth from "mammoth";
 import fs from "fs";
@@ -57,11 +55,9 @@ import { parseGermanDateTime } from "./dateParser";
 
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {
   call: "Telefonat",
-  demo: "Demo / Präsentation",
-  proposal: "Angebot",
   follow_up: "Follow-up",
-  closed_won: "Abschluss gewonnen",
-  closed_lost: "Abschluss verloren",
+  meeting: "Meeting",
+  email: "E-Mail",
 };
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -244,9 +240,6 @@ function analyzeContractWithAI(text: string): Promise<Record<string, any>> {
   const endRaw = getLineAfterLabel(lines, /^Vertragsende$/i) ||
     matchLine(flat, /(?<!K\S{0,20})Vertragsende\s+([\d\.]{6,10})/);
   result.contractEnd = endRaw ? parseGermanDate(endRaw) : null;
-
-  // ─ Status: if contract has a signature section, mark as active ─
-  result.status = /Unterschrift|Vertragsunterzeichnung/i.test(flat) ? "active" : "lead";
 
   // Clean nulls
   for (const k of Object.keys(result)) {
@@ -623,42 +616,12 @@ export function registerRoutes(httpServer: Server, app: Express) {
     const allCustomers = storage.getCustomers();
     const allActivities = storage.getAllActivities();
 
-    const leads = allCustomers.filter((c) => c.status === "lead").length;
-    const prospects = allCustomers.filter((c) => c.status === "prospect").length;
-    const active = allCustomers.filter((c) => c.status === "active").length;
-    const churned = allCustomers.filter((c) => c.status === "churned").length;
     const total = allCustomers.length;
-
-    // Conversion rate: active customers / total leads ever (leads + prospects + active + churned)
-    const conversionRate = total > 0 ? Math.round((active / total) * 100) : 0;
 
     // Activity type breakdown
     const activityByType: Record<string, number> = {};
     for (const a of allActivities) {
       activityByType[a.type] = (activityByType[a.type] || 0) + 1;
-    }
-
-    // Average sales cycle: days from first activity to customer becoming active
-    const activeCustomers = allCustomers.filter((c) => c.status === "active");
-    let avgSalesCycleDays: number | null = null;
-    const cycleDays: number[] = [];
-    for (const c of activeCustomers) {
-      const custActivities = allActivities.filter((a) => a.customerId === c.id && a.completedAt);
-      if (custActivities.length > 0) {
-        const firstCompleted = custActivities.sort((a, b) =>
-          (a.completedAt ?? "") < (b.completedAt ?? "") ? -1 : 1
-        )[0];
-        const lastCompleted = custActivities.sort((a, b) =>
-          (a.completedAt ?? "") > (b.completedAt ?? "") ? -1 : 1
-        )[0];
-        const start = new Date(firstCompleted.completedAt!);
-        const end = new Date(lastCompleted.completedAt!);
-        const days = Math.round((end.getTime() - start.getTime()) / 86400000);
-        if (days >= 0) cycleDays.push(days);
-      }
-    }
-    if (cycleDays.length > 0) {
-      avgSalesCycleDays = Math.round(cycleDays.reduce((a, b) => a + b, 0) / cycleDays.length);
     }
 
     // Activities per month (last 6 months)
@@ -674,47 +637,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
 
     res.json({
       total,
-      leads,
-      prospects,
-      active,
-      churned,
-      conversionRate,
       activityByType,
-      avgSalesCycleDays,
       monthlyActivities,
       totalActivities: allActivities.length,
       completedActivities: allActivities.filter((a) => a.done).length,
     });
-  });
-
-  app.get("/api/analytics/conversion", (_req, res) => {
-    const allCustomers = storage.getCustomers();
-    const total = allCustomers.length;
-    const byStatus = {
-      lead: allCustomers.filter((c) => c.status === "lead").length,
-      prospect: allCustomers.filter((c) => c.status === "prospect").length,
-      active: allCustomers.filter((c) => c.status === "active").length,
-      churned: allCustomers.filter((c) => c.status === "churned").length,
-    };
-    // Conversion rates
-    const leadToProspect = total > 0 ? Math.round(((byStatus.prospect + byStatus.active) / total) * 100) : 0;
-    const prospectToActive = (byStatus.prospect + byStatus.active) > 0
-      ? Math.round((byStatus.active / (byStatus.prospect + byStatus.active)) * 100) : 0;
-    const overallConversion = total > 0 ? Math.round((byStatus.active / total) * 100) : 0;
-
-    // Monthly conversion trend (last 6 months based on createdAt)
-    const now = new Date();
-    const trend: { month: string; leads: number; active: number; rate: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      const label = d.toLocaleDateString("de-DE", { month: "short", year: "2-digit" });
-      const monthLeads = allCustomers.filter((c) => (c.createdAt ?? "").startsWith(key)).length;
-      const monthActive = allCustomers.filter((c) => (c.createdAt ?? "").startsWith(key) && c.status === "active").length;
-      trend.push({ month: label, leads: monthLeads, active: monthActive, rate: monthLeads > 0 ? Math.round((monthActive / monthLeads) * 100) : 0 });
-    }
-
-    res.json({ byStatus, leadToProspect, prospectToActive, overallConversion, trend });
   });
 
   app.get("/api/analytics/activities", (_req, res) => {
@@ -734,32 +661,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.json({ byType, byMonth, total: allActivities.length, completed: allActivities.filter((a) => a.done).length });
   });
 
-  app.get("/api/analytics/sales-cycle", (_req, res) => {
-    const allCustomers = storage.getCustomers();
-    const allActivities = storage.getAllActivities();
-    const activeCustomers = allCustomers.filter((c) => c.status === "active");
-    const cycles: { customerId: number; companyName: string; days: number }[] = [];
-    for (const c of activeCustomers) {
-      const custActivities = allActivities.filter((a) => a.customerId === c.id && a.completedAt);
-      if (custActivities.length >= 1) {
-        const sorted = custActivities.sort((a, b) => (a.completedAt ?? "") < (b.completedAt ?? "") ? -1 : 1);
-        const first = new Date(sorted[0].completedAt!);
-        const last = new Date(sorted[sorted.length - 1].completedAt!);
-        const days = Math.max(0, Math.round((last.getTime() - first.getTime()) / 86400000));
-        cycles.push({ customerId: c.id, companyName: c.companyName, days });
-      }
-    }
-    const avg = cycles.length > 0 ? Math.round(cycles.reduce((s, c) => s + c.days, 0) / cycles.length) : null;
-    res.json({ avgDays: avg, cycles });
-  });
-
   // ── CSV Import / Export ───────────────────────────────────────────────────
   app.get("/api/export/csv", (req, res) => {
     const allCustomers = storage.getCustomers();
     const allActivities = storage.getAllActivities();
     const withActivities = req.query.activities === "true";
 
-    const headers = ["id", "company_name", "contact_name", "email", "phone", "city", "country", "industry", "status", "payment_volume", "created_at"];
+    const headers = ["id", "company_name", "contact_name", "email", "phone", "city", "country", "industry", "payment_volume", "created_at"];
     if (withActivities) headers.push("last_activity_type", "last_activity_date");
 
     const rows = allCustomers.map((c) => {
@@ -772,7 +680,6 @@ export function registerRoutes(httpServer: Server, app: Express) {
         csvEscape(c.city ?? ""),
         csvEscape(c.country ?? ""),
         csvEscape(c.industry ?? ""),
-        c.status,
         String(c.paymentVolume ?? ""),
         c.createdAt,
       ];
@@ -826,8 +733,7 @@ export function registerRoutes(httpServer: Server, app: Express) {
         return idx >= 0 ? (row[idx] ?? "").replace(/^"|"$/g, "").trim() : "";
       };
 
-      const results: { row: number; status: "imported" | "duplicate" | "error"; message?: string; data?: any }[] = [];
-      const existingCustomers = storage.getCustomers();
+      const results: { row: number; status: "imported" | "error"; message?: string; data?: any }[] = [];
 
       for (let i = 1; i < lines.length; i++) {
         const cols = parseCSVLine(lines[i]);
@@ -839,26 +745,13 @@ export function registerRoutes(httpServer: Server, app: Express) {
           const city = getCol(cols, "city") || getCol(cols, "stadt");
           const country = getCol(cols, "country") || getCol(cols, "land") || "Deutschland";
           const industry = getCol(cols, "industry") || getCol(cols, "branche");
-          const status = (getCol(cols, "status") || "lead") as any;
 
           if (!companyName || !contactName) {
             results.push({ row: i + 1, status: "error", message: "Firmenname und Ansprechpartner sind Pflichtfelder" });
             continue;
           }
 
-          // Duplicate check
-          const isDuplicate = existingCustomers.some((c) =>
-            (email && c.email && c.email.toLowerCase() === email.toLowerCase()) ||
-            (phone && c.phone && c.phone.replace(/\s/g, "") === phone.replace(/\s/g, ""))
-          );
-
-          if (isDuplicate) {
-            results.push({ row: i + 1, status: "duplicate", message: `Duplikat gefunden (Email/Telefon bereits vorhanden)` });
-            continue;
-          }
-
-          const customer = storage.createCustomer({ companyName, contactName, email: email || undefined, phone: phone || undefined, city: city || undefined, country, industry: industry || undefined, status });
-          existingCustomers.push(customer);
+          const customer = storage.createCustomer({ companyName, contactName, email: email || undefined, phone: phone || undefined, city: city || undefined, country, industry: industry || undefined });
           results.push({ row: i + 1, status: "imported", data: customer });
         } catch (err: any) {
           results.push({ row: i + 1, status: "error", message: err.message });
@@ -866,94 +759,11 @@ export function registerRoutes(httpServer: Server, app: Express) {
       }
 
       const imported = results.filter((r) => r.status === "imported").length;
-      const duplicates = results.filter((r) => r.status === "duplicate").length;
       const errors = results.filter((r) => r.status === "error").length;
-      res.json({ imported, duplicates, errors, results });
+      res.json({ imported, errors, results });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
-  });
-
-  // ── Duplicate Detection ───────────────────────────────────────────────────
-  app.post("/api/duplicates/check", (req, res) => {
-    const allCustomers = storage.getCustomers();
-    const duplicates: { type: string; customers: any[] }[] = [];
-
-    // Email duplicates
-    const byEmail: Record<string, typeof allCustomers> = {};
-    for (const c of allCustomers) {
-      if (c.email) {
-        const key = c.email.toLowerCase();
-        if (!byEmail[key]) byEmail[key] = [];
-        byEmail[key].push(c);
-      }
-    }
-    for (const [, group] of Object.entries(byEmail)) {
-      if (group.length > 1) duplicates.push({ type: "email", customers: group });
-    }
-
-    // Phone duplicates
-    const byPhone: Record<string, typeof allCustomers> = {};
-    for (const c of allCustomers) {
-      if (c.phone) {
-        const key = c.phone.replace(/[\s\-\(\)]/g, "");
-        if (!byPhone[key]) byPhone[key] = [];
-        byPhone[key].push(c);
-      }
-    }
-    for (const [, group] of Object.entries(byPhone)) {
-      if (group.length > 1) {
-        const alreadyFound = duplicates.some((d) => d.customers.some((dc) => group.some((g) => g.id === dc.id)));
-        if (!alreadyFound) duplicates.push({ type: "phone", customers: group });
-      }
-    }
-
-    // Fuzzy company name duplicates (simple: normalize and compare)
-    const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, " ").replace(/gmbh|ag|e\.k\.|kg|ohg|ug/gi, "").trim();
-    const byName: Record<string, typeof allCustomers> = {};
-    for (const c of allCustomers) {
-      const key = normalize(c.companyName);
-      if (!byName[key]) byName[key] = [];
-      byName[key].push(c);
-    }
-    for (const [, group] of Object.entries(byName)) {
-      if (group.length > 1) {
-        const alreadyFound = duplicates.some((d) => d.customers.some((dc) => group.some((g) => g.id === dc.id)));
-        if (!alreadyFound) duplicates.push({ type: "company_name", customers: group });
-      }
-    }
-
-    res.json({ duplicates, total: duplicates.length });
-  });
-
-  app.post("/api/duplicates/merge", (req, res) => {
-    const { keepId, mergeId } = req.body;
-    if (!keepId || !mergeId) return res.status(400).json({ message: "keepId und mergeId erforderlich" });
-
-    const keep = storage.getCustomer(Number(keepId));
-    const merge = storage.getCustomer(Number(mergeId));
-    if (!keep || !merge) return res.status(404).json({ message: "Kunde nicht gefunden" });
-
-    // Move all activities from mergeId to keepId
-    const mergeActivities = storage.getActivities(Number(mergeId));
-    for (const a of mergeActivities) {
-      storage.updateActivity(a.id, { customerId: Number(keepId) } as any);
-    }
-
-    // Move all notes from mergeId to keepId
-    const mergeNotes = storage.getNotes(Number(mergeId));
-    for (const n of mergeNotes) {
-      storage.updateNote(n.id, { customerId: Number(keepId) });
-    }
-
-    // Delete the merged customer record directly (activities/notes already moved)
-    // Use db directly to avoid cascade-deleting the moved records
-    db.delete(customers).where(eq(customers.id, Number(mergeId))).run();
-
-    // Update last_activity_date on kept customer
-    storage.updateCustomer(Number(keepId), { lastActivityDate: new Date().toISOString() });
-
-    res.json({ success: true, kept: storage.getCustomer(Number(keepId)) });
   });
 
   return httpServer;

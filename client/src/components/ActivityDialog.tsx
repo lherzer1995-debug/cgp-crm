@@ -17,13 +17,9 @@ import type { Customer, Activity, ActivityTemplate } from "@shared/schema";
 
 const ACTIVITY_TYPES: Record<string, string> = {
   call: "Anruf",
-  demo: "Demo",
-  proposal: "Angebot",
   follow_up: "Follow-up",
   meeting: "Meeting",
   email: "E-Mail",
-  closed_won: "Abschluss ✓",
-  closed_lost: "Verloren",
 };
 
 const PRIORITY_LABELS: Record<string, string> = {

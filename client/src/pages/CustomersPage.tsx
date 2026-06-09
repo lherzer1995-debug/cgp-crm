@@ -5,7 +5,6 @@ import { queryClient, apiRequest, API_BASE } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
@@ -23,12 +22,6 @@ import { Plus, Search, Pencil, Trash2, ExternalLink, Euro, Users, Building2, Upl
 import { cn } from "@/lib/utils";
 import type { Customer, InsertCustomer } from "@shared/schema";
 
-const STATUS_LABEL: Record<string, string> = {
-  lead: "Lead", prospect: "Prospect", active: "Aktiv", churned: "Abgewandert",
-};
-const STATUS_CLASS: Record<string, string> = {
-  lead: "badge-lead", prospect: "badge-prospect", active: "badge-active", churned: "badge-churned",
-};
 const INDUSTRIES = [
   "Einzelhandel", "Gastronomie", "E-Commerce", "Dienstleistung",
   "Handwerk", "Hotel & Tourismus", "Gesundheit", "Industrie", "Sonstiges",
@@ -186,7 +179,6 @@ function CustomerForm({
     city: initial?.city ?? "",
     country: initial?.country ?? "Deutschland",
     industry: initial?.industry ?? "",
-    status: (initial?.status as any) ?? "lead",
     paymentVolume: initial?.paymentVolume ?? undefined,
     paymentMethod: initial?.paymentMethod ?? "",
     bankName: initial?.bankName ?? "",
@@ -298,21 +290,12 @@ function CustomerForm({
           <Input id="f-country" value={form.country ?? ""} onChange={(e) => set("country", e.target.value)}
             placeholder="Deutschland" data-testid="input-country" />
         </div>
-        <div className="space-y-1.5">
+        <div className="col-span-2 space-y-1.5">
           <Label>Branche</Label>
           <Select value={form.industry ?? ""} onValueChange={(v) => set("industry", v)}>
             <SelectTrigger data-testid="select-industry"><SelectValue placeholder="Wählen…" /></SelectTrigger>
             <SelectContent>
               {INDUSTRIES.map((i) => <SelectItem key={i} value={i}>{i}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
-        <div className="space-y-1.5">
-          <Label>Status</Label>
-          <Select value={form.status} onValueChange={(v) => set("status", v)}>
-            <SelectTrigger data-testid="select-status"><SelectValue /></SelectTrigger>
-            <SelectContent>
-              {Object.entries(STATUS_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
             </SelectContent>
           </Select>
         </div>
@@ -502,7 +485,6 @@ function CustomerForm({
 export default function CustomersPage() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
@@ -544,12 +526,12 @@ export default function CustomersPage() {
 
   const filtered = customers.filter((c) => {
     const q = search.toLowerCase();
-    const matchSearch =
+    return (
       c.companyName.toLowerCase().includes(q) ||
       c.contactName.toLowerCase().includes(q) ||
       (c.city ?? "").toLowerCase().includes(q) ||
-      (c.email ?? "").toLowerCase().includes(q);
-    return matchSearch && (statusFilter === "all" || c.status === statusFilter);
+      (c.email ?? "").toLowerCase().includes(q)
+    );
   });
 
   const handleSave = (data: Partial<InsertCustomer>) => {
@@ -594,15 +576,6 @@ export default function CustomersPage() {
             data-testid="input-search"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="w-44" data-testid="select-filter-status">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Alle Status</SelectItem>
-            {Object.entries(STATUS_LABEL).map(([v, l]) => <SelectItem key={v} value={v}>{l}</SelectItem>)}
-          </SelectContent>
-        </Select>
       </div>
 
       {/* Table */}
@@ -623,7 +596,7 @@ export default function CustomersPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-border bg-muted/40">
-                    {["Firma", "Kontakt", "Stadt", "Volumen / Mon.", "Status", ""].map((h) => (
+                    {["Firma", "Kontakt", "Stadt", "Volumen / Mon.", ""].map((h) => (
                       <th
                         key={h}
                         className={cn(
@@ -647,13 +620,7 @@ export default function CustomersPage() {
                     >
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
-                          <div className={cn(
-                            "w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm",
-                            c.status === "active" ? "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400" :
-                            c.status === "prospect" ? "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-400" :
-                            c.status === "churned" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-400" :
-                            "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400"
-                          )}>
+                          <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 font-bold text-sm bg-primary/10 text-primary">
                             {c.companyName.charAt(0).toUpperCase()}
                           </div>
                           <div className="min-w-0">
@@ -675,11 +642,6 @@ export default function CustomersPage() {
                             € {c.paymentVolume.toLocaleString("de-DE")}
                           </span>
                         ) : <span className="text-muted-foreground">—</span>}
-                      </td>
-                      <td className="px-4 py-3">
-                        <Badge variant="secondary" className={cn("border-0 text-[11px] font-semibold", STATUS_CLASS[c.status])}>
-                          {STATUS_LABEL[c.status]}
-                        </Badge>
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1 justify-end">

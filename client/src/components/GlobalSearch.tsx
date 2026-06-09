@@ -14,8 +14,7 @@ import { cn } from "@/lib/utils";
 import type { Customer, Note, Activity } from "@shared/schema";
 
 const ACT_TYPES: Record<string, string> = {
-  call: "Anruf", demo: "Demo", proposal: "Angebot", follow_up: "Follow-up",
-  meeting: "Meeting", email: "E-Mail", closed_won: "Abschluss", closed_lost: "Verloren",
+  call: "Anruf", follow_up: "Follow-up", meeting: "Meeting", email: "E-Mail",
 };
 
 interface SearchResult {

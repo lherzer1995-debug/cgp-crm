@@ -2,29 +2,20 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Button } from "@/components/ui/button";
 import {
-  Users, TrendingUp, CheckCircle2, Euro, ArrowRight, Clock,
-  CalendarClock, CheckSquare, Square, Building2, AlertCircle,
+  Users, Euro, ArrowRight, Clock,
+  CalendarClock, CheckCircle2, CheckSquare, Square, Building2, AlertCircle,
 } from "lucide-react";
 import type { Customer, Activity } from "@shared/schema";
 import { cn } from "@/lib/utils";
 
-const STATUS_LABEL: Record<string, string> = {
-  lead: "Lead", prospect: "Prospect", active: "Aktiv", churned: "Abgewandert",
-};
-const STATUS_CLASS: Record<string, string> = {
-  lead: "badge-lead", prospect: "badge-prospect", active: "badge-active", churned: "badge-churned",
-};
 const ACT_LABEL: Record<string, string> = {
-  call: "Anruf", demo: "Demo", proposal: "Angebot", follow_up: "Follow-up",
-  closed_won: "Abschluss", closed_lost: "Verloren", meeting: "Meeting", email: "E-Mail",
+  call: "Anruf", follow_up: "Follow-up", meeting: "Meeting", email: "E-Mail",
 };
 const ACT_CLASS: Record<string, string> = {
-  call: "act-call", demo: "act-demo", proposal: "act-proposal", follow_up: "act-follow_up",
-  closed_won: "act-closed_won", closed_lost: "act-closed_lost",
+  call: "act-call", follow_up: "act-follow_up",
   meeting: "text-indigo-600 dark:text-indigo-400", email: "text-cyan-600 dark:text-cyan-400",
 };
 
@@ -81,9 +72,6 @@ export default function DashboardPage() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/activities"] }),
   });
 
-  const active = customers.filter((c) => c.status === "active").length;
-  const leads = customers.filter((c) => c.status === "lead").length;
-  const prospects = customers.filter((c) => c.status === "prospect").length;
   const totalVol = customers.reduce((s, c) => s + (c.paymentVolume || 0), 0);
 
   // Aufgaben sortiert nach Datum
@@ -105,14 +93,6 @@ export default function DashboardPage() {
   }).length;
 
   const recent = [...customers].reverse().slice(0, 5);
-
-  // Pipeline-Verteilung
-  const pipeline = [
-    { label: "Lead", count: leads, color: "bg-amber-400", pct: customers.length ? leads / customers.length : 0 },
-    { label: "Prospect", count: prospects, color: "bg-blue-400", pct: customers.length ? prospects / customers.length : 0 },
-    { label: "Aktiv", count: active, color: "bg-green-500", pct: customers.length ? active / customers.length : 0 },
-    { label: "Abgewandert", count: customers.filter((c) => c.status === "churned").length, color: "bg-red-400", pct: customers.length ? customers.filter((c) => c.status === "churned").length / customers.length : 0 },
-  ];
 
   return (
     <div className="space-y-6 max-w-6xl">
@@ -136,13 +116,9 @@ export default function DashboardPage() {
       </div>
 
       {/* KPI-Reihe */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 xl:grid-cols-3 gap-3">
         <StatCard label="Kunden gesamt" value={customers.length} icon={Users}
-          accent="bg-primary" loading={cLoad}
-          sub={`${active} aktiv · ${leads} Leads`} />
-        <StatCard label="Aktive Kunden" value={active} icon={CheckCircle2}
-          accent="bg-green-500" loading={cLoad}
-          sub={customers.length ? `${Math.round(active / customers.length * 100)} % Conversion` : undefined} />
+          accent="bg-primary" loading={cLoad} />
         <StatCard label="Offene Aufgaben" value={pending.length} icon={Clock}
           accent={overdue > 0 ? "bg-destructive" : "bg-amber-400"} loading={aLoad}
           sub={overdue > 0 ? `${overdue} überfällig` : "Alle im Plan"} />
@@ -151,10 +127,10 @@ export default function DashboardPage() {
       </div>
 
       {/* Mittlere Reihe */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 gap-4">
 
         {/* Aufgaben */}
-        <Card className="lg:col-span-2">
+        <Card>
           <CardHeader className="pb-2 pt-4 px-4">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-semibold flex items-center gap-2">
@@ -227,34 +203,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Pipeline */}
-        <Card>
-          <CardHeader className="pb-2 pt-4 px-4">
-            <CardTitle className="text-sm font-semibold flex items-center gap-2">
-              <TrendingUp className="w-4 h-4 text-primary" />
-              Pipeline
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="px-4 pb-4 space-y-3">
-            {pipeline.map(({ label, count, color, pct }) => (
-              <div key={label}>
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-xs text-foreground font-medium">{label}</span>
-                  <span className="text-xs font-bold text-foreground">{count}</span>
-                </div>
-                <div className="h-2 rounded-full bg-secondary overflow-hidden">
-                  <div
-                    className={cn("h-full rounded-full transition-all duration-700", color)}
-                    style={{ width: `${Math.round(pct * 100)}%` }}
-                  />
-                </div>
-              </div>
-            ))}
-            {customers.length === 0 && (
-              <p className="text-xs text-muted-foreground text-center py-4">Noch keine Kunden</p>
-            )}
-          </CardContent>
-        </Card>
       </div>
 
       {/* Zuletzt hinzugefügt */}
@@ -304,9 +252,6 @@ export default function DashboardPage() {
                         € {c.paymentVolume.toLocaleString("de-DE")}
                       </span>
                     ) : null}
-                    <Badge variant="secondary" className={cn("text-[10px] border-0 shrink-0", STATUS_CLASS[c.status])}>
-                      {STATUS_LABEL[c.status]}
-                    </Badge>
                   </a>
                 </Link>
               ))}
