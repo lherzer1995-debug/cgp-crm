@@ -10,6 +10,10 @@ import { Button } from "@/components/ui/button";
 import type { Activity as ActivityType } from "@shared/schema";
 import GlobalSearch from "./GlobalSearch";
 
+interface AppSettings {
+  crmName: string;
+}
+
 const navItems = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   { href: "/customers", label: "Kunden", icon: Users },
@@ -59,6 +63,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // CRM name from settings
+  const { data: appSettings } = useQuery<AppSettings>({ queryKey: ["/api/settings"] });
+  const crmName = appSettings?.crmName ?? "CGP CRM";
+
   // Badge: offene Aufgaben
   const { data: activities = [] } = useQuery<ActivityType[]>({ queryKey: ["/api/activities"] });
   const openCount = activities.filter((a) => !a.done && a.dueDate).length;
@@ -86,8 +94,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         <div className="flex items-center gap-3 px-4 py-4 border-b border-border">
           <CommerzLogo />
           <div className="min-w-0">
-            <p className="text-[13px] font-bold text-foreground leading-tight tracking-tight">
-              Commerz<span className="text-primary">Globalpay</span>
+            <p className="text-[13px] font-bold text-foreground leading-tight tracking-tight truncate">
+              {crmName}
             </p>
             <p className="text-[10px] text-muted-foreground font-semibold uppercase tracking-widest mt-0.5">CRM System</p>
           </div>
@@ -199,7 +207,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </span>
             {/* Mobile logo */}
             <span className="md:hidden text-sm font-bold text-foreground">
-              Commerz<span className="text-primary">Globalpay</span>
+              {crmName}
             </span>
           </div>
 

@@ -17,6 +17,10 @@ import { useEffect, useState } from "react";
 import { Calendar, Loader2, ExternalLink } from "lucide-react";
 import { API_BASE } from "@/lib/queryClient";
 
+interface AppSettings {
+  crmName: string;
+}
+
 interface GCalStatus {
   connected: boolean;
   email?: string | null;
@@ -133,6 +137,12 @@ function GCalSetupScreen() {
 // ── Main CRM App ──────────────────────────────────────────────────────────────
 function CRMApp() {
   const { toast } = useToast();
+
+  // Sync CRM name into document.title
+  const { data: appSettings } = useQuery<AppSettings>({ queryKey: ["/api/settings"] });
+  useEffect(() => {
+    document.title = appSettings?.crmName ?? "CGP CRM";
+  }, [appSettings?.crmName]);
 
   // Detect ?gcal=success after OAuth redirect and show toast
   useEffect(() => {

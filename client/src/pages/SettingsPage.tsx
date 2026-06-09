@@ -6,10 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, XCircle, Calendar, Loader2, LogOut, ExternalLink, FileText, Plus, Trash2 } from "lucide-react";
+import { CheckCircle2, XCircle, Calendar, Loader2, LogOut, ExternalLink, FileText, Plus, Trash2, Pencil } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { queryClient, apiRequest, API_BASE } from "@/lib/queryClient";
 import type { NoteTemplate } from "@shared/schema";
+
+interface AppSettings {
+  crmName: string;
+}
 
 interface GCalStatus {
   connected: boolean;
@@ -36,6 +40,25 @@ export default function SettingsPage() {
   const [location] = useLocation();
   const [flashMessage, setFlashMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
   const [templateForm, setTemplateForm] = useState({ name: "", content: "" });
+  const [crmNameInput, setCrmNameInput] = useState("");
+
+  // App Settings (CRM name)
+  const { data: appSettings } = useQuery<AppSettings>({
+    queryKey: ["/api/settings"],
+  });
+  useEffect(() => {
+    if (appSettings?.crmName) setCrmNameInput(appSettings.crmName);
+  }, [appSettings?.crmName]);
+  const updateSettings = useMutation({
+    mutationFn: (data: Partial<AppSettings>) => apiRequest("PUT", "/api/settings", data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings"] });
+      setFlashMessage({ type: "success", text: "Einstellungen gespeichert." });
+    },
+    onError: (err: any) => {
+      setFlashMessage({ type: "error", text: `Fehler: ${err.message}` });
+    },
+  });
 
   // Note Templates
   const { data: templates = [] } = useQuery<NoteTemplate[]>({
@@ -142,6 +165,48 @@ export default function SettingsPage() {
           </button>
         </div>
       )}
+
+      {/* CRM Name */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Pencil className="w-4 h-4 text-[#FFD100]" />
+            CRM-Name
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <p className="text-sm text-muted-foreground">
+            Passe den Namen deines CRM-Systems an. Er wird in der Navigation und im App-Titel angezeigt.
+          </p>
+          <div className="space-y-1.5">
+            <Label htmlFor="crm-name">CRM-Name</Label>
+            <div className="flex gap-2">
+              <Input
+                id="crm-name"
+                value={crmNameInput}
+                onChange={(e) => setCrmNameInput(e.target.value)}
+                placeholder="z.B. CGP CRM"
+                className="max-w-xs"
+              />
+              <Button
+                size="sm"
+                className="min-h-[40px]"
+                onClick={() => {
+                  if (!crmNameInput.trim()) return;
+                  updateSettings.mutate({ crmName: crmNameInput.trim() });
+                }}
+                disabled={updateSettings.isPending || !crmNameInput.trim() || crmNameInput.trim() === appSettings?.crmName}
+              >
+                {updateSettings.isPending ? (
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                ) : (
+                  "Speichern"
+                )}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Google Calendar */}
       <Card>

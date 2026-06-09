@@ -2,12 +2,13 @@ import { drizzle } from "drizzle-orm/better-sqlite3";
 import Database from "better-sqlite3";
 import { eq } from "drizzle-orm";
 import {
-  customers, notes, activities, attachments, noteTemplates,
+  customers, notes, activities, attachments, noteTemplates, settings,
   type Customer, type InsertCustomer,
   type Note, type InsertNote,
   type Activity, type InsertActivity,
   type Attachment, type InsertAttachment,
   type NoteTemplate, type InsertNoteTemplate,
+  type Settings, type InsertSettings,
 } from "@shared/schema";
 
 // On Render: use persistent disk at /data/data.db, otherwise local data.db
@@ -85,6 +86,12 @@ sqlite.exec(`
     completed_at TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
+  CREATE TABLE IF NOT EXISTS settings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    crm_name TEXT NOT NULL DEFAULT 'CGP CRM',
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 `);
 
 // Run migrations for existing databases (ALTER TABLE IF NOT EXISTS column)
@@ -124,6 +131,9 @@ export interface IStorage {
   createActivity(data: InsertActivity): Activity;
   updateActivity(id: number, data: Partial<InsertActivity>): Activity | undefined;
   deleteActivity(id: number): void;
+  // Settings
+  getSettings(): Settings;
+  updateSettings(data: Partial<InsertSettings>): Settings;
 }
 
 class Storage implements IStorage {
@@ -209,6 +219,25 @@ class Storage implements IStorage {
   }
   deleteActivity(id: number): void {
     db.delete(activities).where(eq(activities.id, id)).run();
+  }
+
+  // ── Settings ─────────────────────────────────────────────────────────────
+  getSettings(): Settings {
+    let row = db.select().from(settings).get();
+    if (!row) {
+      // Seed default row on first access
+      row = db.insert(settings).values({ crmName: "CGP CRM" }).returning().get();
+    }
+    return row;
+  }
+  updateSettings(data: Partial<InsertSettings>): Settings {
+    const existing = this.getSettings();
+    return db
+      .update(settings)
+      .set({ ...data, updatedAt: new Date().toISOString() })
+      .where(eq(settings.id, existing.id))
+      .returning()
+      .get();
   }
 }
 
