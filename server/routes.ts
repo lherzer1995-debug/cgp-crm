@@ -52,7 +52,11 @@ async function extractPdfText(buffer: Buffer): Promise<string> {
 import { syncActivityToCalendar, gcalConfigured } from "./gcalDirect";
 import { registerOAuthRoutes, getStoredToken } from "./oauth";
 import { parseGermanDateTime } from "./dateParser";
-import { summarizeCustomerNotes, generateVisitReport, extractTodosFromReport } from "./ai";
+import {
+  summarizeCustomerNotes, generateVisitReport, extractTodosFromReport,
+  optimizeRoute, calculateRiskScore, generateDailyBriefing, generateWeeklySummary, generateMonthlyForecast,
+} from "./ai";
+import { insertRouteSchema } from "@shared/schema";
 import { checkContractRenewals } from "./cron";
 
 
@@ -1017,7 +1021,196 @@ export function registerRoutes(httpServer: Server, app: Express) {
     res.status(204).end();
   });
 
+  // ── PHASE 3: Route Optimization ───────────────────────────────────────────
+
+  // POST /api/routes/optimize — geocode customers and run nearest-neighbor
+  app.post("/api/routes/optimize", async (req, res) => {
+    try {
+      const { customerIds, startLocation, routeDate } = req.body;
+      if (!customerIds?.length || !startLocation) {
+        return res.status(400).json({ message: "customerIds und startLocation erforderlich" });
+      }
+
+      // Geocode start location
+      const startGeo = await geocodeNominatim(startLocation);
+      if (!startGeo) {
+        return res.status(422).json({ message: `Startort "${startLocation}" konnte nicht geocodiert werden` });
+      }
+
+      // Geocode each customer
+      const allCustomers = storage.getCustomers();
+      const customerMap = new Map(allCustomers.map((c) => [c.id, c]));
+      const coords: { customerId: number; lat: number; lng: number; companyName: string; city: string | null }[] = [];
+
+      for (const id of customerIds) {
+        const c = customerMap.get(Number(id));
+        if (!c) continue;
+        const geo = await geocodeNominatim(`${c.city ?? ""}, ${c.country ?? "Deutschland"}`);
+        if (geo) {
+          coords.push({ customerId: c.id, lat: geo.lat, lng: geo.lng, companyName: c.companyName, city: c.city ?? null });
+        }
+      }
+
+      if (coords.length === 0) {
+        return res.status(422).json({ message: "Keine Kunden konnten geocodiert werden. Bitte Städte prüfen." });
+      }
+
+      const result = optimizeRoute(coords, startGeo.lat, startGeo.lng);
+      res.json({ ...result, startLocation, routeDate: routeDate ?? new Date().toISOString().split("T")[0] });
+    } catch (err: any) {
+      console.error("[Route] Optimize error:", err);
+      res.status(500).json({ message: err.message || "Fehler bei der Routenoptimierung" });
+    }
+  });
+
+  // POST /api/routes/save — save an optimized route
+  app.post("/api/routes/save", (req, res) => {
+    try {
+      const { routeDate, startLocation, customerIds, optimizedOrder, totalDistanceKm, estimatedDurationMin } = req.body;
+      if (!routeDate || !startLocation || !customerIds || !optimizedOrder) {
+        return res.status(400).json({ message: "Pflichtfelder fehlen" });
+      }
+      const route = storage.createRoute({
+        routeDate,
+        startLocation,
+        customerIds: JSON.stringify(customerIds),
+        optimizedOrder: JSON.stringify(optimizedOrder),
+        totalDistanceKm: totalDistanceKm ?? null,
+        estimatedDurationMin: estimatedDurationMin ?? null,
+        status: "planned",
+      });
+      res.status(201).json(route);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/routes/:date — routes for a specific date
+  app.get("/api/routes/:date", (req, res) => {
+    const date = req.params.date;
+    const list = storage.getRoutes(date);
+    res.json(list);
+  });
+
+  // PATCH /api/routes/:id — update route status/duration
+  app.patch("/api/routes/:id", (req, res) => {
+    const id = Number(req.params.id);
+    const partial = insertRouteSchema.partial().safeParse(req.body);
+    if (!partial.success) return res.status(400).json({ message: partial.error.message });
+    const route = storage.updateRoute(id, partial.data);
+    if (!route) return res.status(404).json({ message: "Route nicht gefunden" });
+    res.json(route);
+  });
+
+  // ── PHASE 3: Risk Scoring ─────────────────────────────────────────────────
+
+  // GET /api/analytics/risk-scores — all customers with risk scores
+  app.get("/api/analytics/risk-scores", (_req, res) => {
+    try {
+      const allCustomers = storage.getCustomers();
+      const results = allCustomers.map((c) => {
+        try {
+          const assessment = calculateRiskScore(c.id);
+          return { ...c, riskScore: assessment.score, riskCategory: assessment.category, riskReasons: assessment.reasons };
+        } catch {
+          return { ...c, riskScore: c.riskScore ?? 0, riskCategory: "green" as const, riskReasons: [] };
+        }
+      });
+      res.json(results);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // POST /api/customers/:id/assess-risk — recalculate risk score and persist
+  app.post("/api/customers/:id/assess-risk", (req, res) => {
+    try {
+      const customerId = Number(req.params.id);
+      const customer = storage.getCustomer(customerId);
+      if (!customer) return res.status(404).json({ message: "Kunde nicht gefunden" });
+      const assessment = calculateRiskScore(customerId);
+      // Persist score to customer record
+      storage.updateCustomer(customerId, {
+        riskScore: assessment.score,
+        lastRiskAssessmentDate: new Date().toISOString().split("T")[0],
+      });
+      res.json(assessment);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // GET /api/analytics/at-risk-customers — only red/yellow customers
+  app.get("/api/analytics/at-risk-customers", (_req, res) => {
+    try {
+      const allCustomers = storage.getCustomers();
+      const atRisk = allCustomers
+        .map((c) => {
+          try {
+            const assessment = calculateRiskScore(c.id);
+            return { ...c, riskScore: assessment.score, riskCategory: assessment.category, riskReasons: assessment.reasons };
+          } catch {
+            return null;
+          }
+        })
+        .filter((c): c is NonNullable<typeof c> => c !== null && (c.riskCategory === "red" || c.riskCategory === "yellow"))
+        .sort((a, b) => b.riskScore - a.riskScore);
+      res.json(atRisk);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // ── PHASE 3: KI-Briefings ─────────────────────────────────────────────────
+
+  // GET /api/briefing/daily
+  app.get("/api/briefing/daily", async (_req, res) => {
+    try {
+      const briefing = await generateDailyBriefing();
+      res.json({ briefing, generatedAt: new Date().toISOString() });
+    } catch (err: any) {
+      console.error("[Briefing] Daily error:", err);
+      res.status(500).json({ message: err.message || "Fehler beim Generieren des Briefings" });
+    }
+  });
+
+  // GET /api/briefing/weekly
+  app.get("/api/briefing/weekly", async (_req, res) => {
+    try {
+      const briefing = await generateWeeklySummary();
+      res.json({ briefing, generatedAt: new Date().toISOString() });
+    } catch (err: any) {
+      console.error("[Briefing] Weekly error:", err);
+      res.status(500).json({ message: err.message || "Fehler beim Generieren der Wochenzusammenfassung" });
+    }
+  });
+
+  // GET /api/briefing/monthly
+  app.get("/api/briefing/monthly", async (_req, res) => {
+    try {
+      const forecast = await generateMonthlyForecast();
+      res.json(forecast);
+    } catch (err: any) {
+      console.error("[Briefing] Monthly error:", err);
+      res.status(500).json({ message: err.message || "Fehler beim Generieren der Monatsprognose" });
+    }
+  });
+
   return httpServer;
+}
+
+// ── Nominatim geocoding (server-side) ────────────────────────────────────────
+async function geocodeNominatim(query: string): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+    const res = await fetch(url, { headers: { "User-Agent": "CGP-CRM/1.0" } });
+    if (!res.ok) return null;
+    const data = (await res.json()) as { lat: string; lon: string }[];
+    if (!data.length) return null;
+    return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+  } catch {
+    return null;
+  }
 }
 
 // ── CSV helpers ──────────────────────────────────────────────────────────────

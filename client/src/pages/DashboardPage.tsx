@@ -1,3 +1,4 @@
+import React from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -7,10 +8,15 @@ import { Button } from "@/components/ui/button";
 import {
   Users, Euro, ArrowRight, Clock,
   CalendarClock, CheckCircle2, CheckSquare, Square, Building2, AlertCircle,
-  Bell, AlertTriangle, Check, TrendingUp, UserCheck, ListChecks,
+  Bell, AlertTriangle, Check, TrendingUp, UserCheck, ListChecks, TrendingDown, Minus,
 } from "lucide-react";
+import {
+  AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+} from "recharts";
 import type { Customer, Activity, Reminder } from "@shared/schema";
 import { cn } from "@/lib/utils";
+import { BriefingCard } from "@/components/BriefingCard";
+import { formatTrend } from "@/lib/briefingHelpers";
 
 const ACT_LABEL: Record<string, string> = {
   call: "Anruf", follow_up: "Follow-up", meeting: "Meeting", email: "E-Mail",
@@ -73,6 +79,17 @@ type TodayStats = {
   customersContactedToday: number;
 };
 
+type MonthlyForecast = {
+  expectedCommissions: number;
+  churnRiskCount: number;
+  upsellOpportunities: number;
+  trend: "up" | "down" | "stable";
+  trendPercent: number;
+  commissionHistory: { month: string; total: number }[];
+  recommendations: string[];
+  forecastText: string;
+};
+
 export default function DashboardPage() {
   const { data: customers = [], isLoading: cLoad } = useQuery<Customer[]>({ queryKey: ["/api/customers"] });
   const { data: activities = [], isLoading: aLoad } = useQuery<Activity[]>({ queryKey: ["/api/activities"] });
@@ -91,6 +108,22 @@ export default function DashboardPage() {
     },
     refetchInterval: 60_000, // refresh every minute
   });
+
+  const [forecastLoading, setForecastLoading] = React.useState(false);
+  const [forecast, setForecast] = React.useState<MonthlyForecast | null>(null);
+
+  const loadForecast = async () => {
+    setForecastLoading(true);
+    try {
+      const r = await apiRequest("GET", "/api/briefing/monthly");
+      const data = await r.json();
+      setForecast(data);
+    } catch {
+      // silently fail
+    } finally {
+      setForecastLoading(false);
+    }
+  };
 
   const custMap = Object.fromEntries(customers.map((c) => [c.id, c]));
 
@@ -424,6 +457,157 @@ export default function DashboardPage() {
                   </a>
                 </Link>
               ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* ── PHASE 3: KI-Briefings ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <BriefingCard
+          type="daily"
+          title="KI-Tagesbriefing"
+          description="Personalisiertes Briefing mit Aufgaben, Risiken und Empfehlungen"
+        />
+        <BriefingCard
+          type="weekly"
+          title="Wochenzusammenfassung"
+          description="Rückblick auf die Woche und Prioritäten für nächste Woche"
+        />
+      </div>
+
+      {/* ── PHASE 3: Monatliche Prognose ── */}
+      <Card className="overflow-hidden">
+        <div className="h-1 bg-gradient-to-r from-violet-500 to-[#0052CC]" />
+        <CardHeader className="pb-2 pt-4 px-4">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <TrendingUp className="w-4 h-4 text-violet-500" />
+              Monatliche Prognose
+            </CardTitle>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadForecast}
+              disabled={forecastLoading}
+              className="gap-2 text-xs"
+            >
+              {forecastLoading ? (
+                <><Minus className="w-3.5 h-3.5 animate-spin" /> Berechne…</>
+              ) : (
+                <><TrendingUp className="w-3.5 h-3.5" /> {forecast ? "Aktualisieren" : "Prognose laden"}</>
+              )}
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent className="px-4 pb-4">
+          {forecastLoading ? (
+            <div className="space-y-3">
+              <div className="grid grid-cols-3 gap-3">
+                {[1, 2, 3].map((i) => <Skeleton key={i} className="h-20 w-full rounded-lg" />)}
+              </div>
+              <Skeleton className="h-40 w-full" />
+            </div>
+          ) : forecast ? (
+            <div className="space-y-4">
+              {/* KPIs */}
+              <div className="grid grid-cols-3 gap-3">
+                <div className="flex flex-col p-3 rounded-lg bg-violet-50/60 dark:bg-violet-950/20 border border-violet-200/40 dark:border-violet-800/30">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Erwartete Provisionen</span>
+                  <span className="text-xl font-black text-violet-600 dark:text-violet-400">
+                    € {forecast.expectedCommissions.toLocaleString("de-DE")}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5">nächster Monat</span>
+                </div>
+                <div className={cn(
+                  "flex flex-col p-3 rounded-lg border",
+                  forecast.churnRiskCount > 0
+                    ? "bg-red-50/60 dark:bg-red-950/20 border-red-200/40 dark:border-red-800/30"
+                    : "bg-secondary/40 border-border"
+                )}>
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Churn-Risiko</span>
+                  <span className={cn(
+                    "text-xl font-black",
+                    forecast.churnRiskCount > 0 ? "text-red-600 dark:text-red-400" : "text-foreground"
+                  )}>
+                    {forecast.churnRiskCount}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5">Verträge &lt; 30 Tage</span>
+                </div>
+                <div className="flex flex-col p-3 rounded-lg bg-green-50/60 dark:bg-green-950/20 border border-green-200/40 dark:border-green-800/30">
+                  <span className="text-[10px] font-bold uppercase tracking-wide text-muted-foreground mb-1">Upsell-Chancen</span>
+                  <span className="text-xl font-black text-green-600 dark:text-green-400">
+                    {forecast.upsellOpportunities}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground mt-0.5">inaktive Kunden</span>
+                </div>
+              </div>
+
+              {/* Trend + Chart */}
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                <div className="lg:col-span-2">
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-2">Provisions-Trend (6 Monate)</p>
+                  <ResponsiveContainer width="100%" height={140}>
+                    <AreaChart data={forecast.commissionHistory} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+                      <defs>
+                        <linearGradient id="commGrad" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#7c3aed" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#7c3aed" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
+                      <XAxis dataKey="month" tick={{ fontSize: 10 }} />
+                      <YAxis tick={{ fontSize: 10 }} />
+                      <Tooltip
+                        contentStyle={{ fontSize: "12px", borderRadius: "8px", border: "1px solid hsl(var(--border))" }}
+                        formatter={(v: any) => [`€ ${Number(v).toLocaleString("de-DE", { minimumFractionDigits: 2 })}`, "Provisionen"]}
+                      />
+                      <Area
+                        type="monotone"
+                        dataKey="total"
+                        stroke="#7c3aed"
+                        strokeWidth={2}
+                        fill="url(#commGrad)"
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+
+                {/* Recommendations */}
+                <div>
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wide mb-2">Empfehlungen</p>
+                  <ul className="space-y-1.5">
+                    {forecast.recommendations.map((r, i) => (
+                      <li key={i} className="flex items-start gap-2 text-xs text-foreground">
+                        <span className="w-4 h-4 rounded-full bg-violet-100 dark:bg-violet-900/30 text-violet-600 dark:text-violet-400 flex items-center justify-center text-[10px] font-bold shrink-0 mt-0.5">
+                          {i + 1}
+                        </span>
+                        {r}
+                      </li>
+                    ))}
+                  </ul>
+                  {forecast.trendPercent !== 0 && (() => {
+                    const t = formatTrend(forecast.trendPercent);
+                    return (
+                      <div className={cn("mt-3 flex items-center gap-1.5 text-xs font-semibold", t.className)}>
+                        {forecast.trend === "up" ? <TrendingUp className="w-3.5 h-3.5" /> : forecast.trend === "down" ? <TrendingDown className="w-3.5 h-3.5" /> : <Minus className="w-3.5 h-3.5" />}
+                        Trend: {t.label} vs. Vorquartal
+                      </div>
+                    );
+                  })()}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <TrendingUp className="w-8 h-8 mx-auto mb-3 text-muted-foreground opacity-40" />
+              <p className="text-sm text-muted-foreground font-medium">Monatliche Prognose</p>
+              <p className="text-xs text-muted-foreground mt-1 mb-3">
+                KI-gestützte Analyse: Provisionen, Churn-Risiko und Upsell-Chancen
+              </p>
+              <Button size="sm" onClick={loadForecast} disabled={forecastLoading} className="gap-2">
+                <TrendingUp className="w-3.5 h-3.5" /> Prognose generieren
+              </Button>
             </div>
           )}
         </CardContent>

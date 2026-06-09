@@ -42,6 +42,9 @@ export const customers = sqliteTable("customers", {
   defaultVolume: real("default_volume"),
   // Analytics
   lastActivityDate: text("last_activity_date"),
+  // Phase 3: Risk Scoring
+  riskScore: integer("risk_score"),                          // 0-100
+  lastRiskAssessmentDate: text("last_risk_assessment_date"), // ISO date
   // Meta
   createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
 });
@@ -226,3 +229,25 @@ export const insertSupportTicketSchema = createInsertSchema(supportTickets).omit
 });
 export type InsertSupportTicket = z.infer<typeof insertSupportTicketSchema>;
 export type SupportTicket = typeof supportTickets.$inferSelect;
+
+// ── Routes (Tourenoptimierung) ─────────────────────────────────────────────
+export const routes = sqliteTable("routes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  routeDate: text("route_date").notNull(),                   // ISO date: YYYY-MM-DD
+  startLocation: text("start_location").notNull(),           // Startort (Stadt/Adresse)
+  customerIds: text("customer_ids").notNull(),               // JSON: [id, id, ...]
+  optimizedOrder: text("optimized_order").notNull(),         // JSON: [id, id, ...] optimierte Reihenfolge
+  totalDistanceKm: real("total_distance_km"),
+  estimatedDurationMin: integer("estimated_duration_min"),
+  status: text("status").notNull().default("planned"),       // planned | in_progress | completed
+  createdAt: text("created_at").notNull().$defaultFn(() => new Date().toISOString()),
+  updatedAt: text("updated_at").notNull().$defaultFn(() => new Date().toISOString()),
+});
+
+export const insertRouteSchema = createInsertSchema(routes).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertRoute = z.infer<typeof insertRouteSchema>;
+export type Route = typeof routes.$inferSelect;
