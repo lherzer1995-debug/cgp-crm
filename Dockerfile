@@ -16,10 +16,7 @@ RUN cd web && npm install
 COPY . .
 
 # Build API with Prisma
-RUN cd api && npx prisma generate --schema=../prisma/schema.prisma && \
-    cp -r ../node_modules/.prisma node_modules/.prisma && \
-    cp -r ../node_modules/@prisma/client node_modules/@prisma/client && \
-    npm run build
+RUN cd api && npx prisma generate --schema=../prisma/schema.prisma && npm run build
 
 # Build Web
 RUN cd web && npm run build
