@@ -38,6 +38,10 @@ model Customer {
   activities    Activity[]
   commissions   Commission[]
   aiSummaries   AISummary[]
+  noteEntries   Note[]
+  routeStops    RouteStop[]
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id])
 }
 
 model Activity {
