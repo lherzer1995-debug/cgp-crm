@@ -30,7 +30,7 @@ export class AiService {
 
     return semanticSearch(
       query,
-      customers.map((c) => ({ ...c, notes: c.notes || undefined }))
+      customers.map((c: any) => ({ ...c, notes: c.notes || undefined }))
     );
   }
 
