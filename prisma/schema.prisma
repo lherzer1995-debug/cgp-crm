@@ -7,96 +7,244 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
+// ─── Organization / Multi-Tenant ───────────────────────────
+model Organization {
   id        String   @id @default(cuid())
-  clerkId   String   @unique
-  email     String   @unique
   name      String
+  slug      String   @unique
   createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     OrganizationUser[]
   customers Customer[]
-  notes     Note[]
-  routes    Route[]
 }
 
+model OrganizationUser {
+  id             String       @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       @default("member") // owner | admin | member
+  createdAt      DateTime     @default(now())
+
+  @@unique([organizationId, userId])
+}
+
+// ─── User ──────────────────────────────────────────────────
+model User {
+  id               String             @id @default(cuid())
+  clerkId          String             @unique
+  email            String             @unique
+  name             String
+  avatarUrl        String?
+  phone            String?
+  timezone         String             @default("Europe/Berlin")
+  preferences      Json               @default("{}")
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+  organizations    OrganizationUser[]
+  customers        Customer[]
+  notes            Note[]
+  routes           Route[]
+  tasks            Task[]
+  appointments     Appointment[]
+  calendarTokens   GoogleCalendarToken[]
+  aiSuggestions    AISuggestion[]
+}
+
+// ─── Customer (Bestandskunde) ──────────────────────────────
 model Customer {
-  id            String   @id @default(cuid())
-  name          String
-  contactPerson String?
-  email         String?
-  phone         String?
-  address       String?
-  city          String?
-  industry      String?
-  status        String   @default("active")
-  riskScore     Int      @default(0)
-  latitude      Float?
-  longitude     Float?
-  notes         String?
-  contractEnd   DateTime?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  activities    Activity[]
-  commissions   Commission[]
-  aiSummaries   AISummary[]
-  noteEntries   Note[]
-  routeStops    RouteStop[]
-  userId        String?
-  user          User?     @relation(fields: [userId], references: [id])
+  id             String       @id @default(cuid())
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String?
+  user           User?        @relation(fields: [userId], references: [id])
+
+  // Core
+  name           String
+  contactPerson  String?
+  email          String?
+  phone          String?
+  mobile         String?
+  website        String?
+
+  // Address & Location
+  street         String?
+  city           String?
+  zipCode        String?
+  country        String?      @default("Deutschland")
+  latitude       Float?
+  longitude      Float?
+
+  // Classification
+  industry       String?
+  category       String?      // A, B, C – priority tier
+  status         String       @default("active") // active | inactive | churned
+  priority       Int          @default(3)        // 1-5
+  riskScore      Int          @default(0)        // 0-100
+
+  // Business
+  notes          String?
+  contractEnd    DateTime?
+  lastVisit      DateTime?
+  visitFrequency Int?         // days between recommended visits
+
+  // Metadata
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+
+  // Relations
+  activities     Activity[]
+  commissions    Commission[]
+  aiSummaries    AISummary[]
+  noteEntries    Note[]
+  routeStops     RouteStop[]
+  appointments   Appointment[]
+  tasks          Task[]
+  tags           CustomerTag[]
+  attachments    Attachment[]
 }
 
+// ─── Tags ──────────────────────────────────────────────────
+model Tag {
+  id        String       @id @default(cuid())
+  name      String       @unique
+  color     String       @default("#53bfff")
+  createdAt DateTime     @default(now())
+  customers CustomerTag[]
+}
+
+model CustomerTag {
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tagId      String
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, tagId])
+}
+
+// ─── Attachments ───────────────────────────────────────────
+model Attachment {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  name       String
+  url        String
+  type       String   @default("file") // image | document | file
+  size       Int      @default(0)
+  createdAt  DateTime @default(now())
+}
+
+// ─── Activity / Timeline ───────────────────────────────────
 model Activity {
-  id          String   @id @default(cuid())
-  customerId  String
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  type        String   @default("note")
-  title       String
-  done        Boolean  @default(false)
-  dueDate     DateTime?
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type       String   @default("note") // note | call | visit | email | task | system
+  title      String
+  description String?
+  done       Boolean  @default(false)
+  dueDate    DateTime?
+  completedAt DateTime?
   aiGenerated Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
+// ─── Commission ────────────────────────────────────────────
 model Commission {
-  id          String   @id @default(cuid())
-  customerId  String
-  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  amount      Float
-  type        String   @default("sale")
-  date        DateTime @default(now())
-  createdAt   DateTime @default(now())
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  amount     Float
+  type       String   @default("sale") // sale | service | recurring
+  description String?
+  date       DateTime @default(now())
+  createdAt  DateTime @default(now())
 }
 
+// ─── Note / AI Note ───────────────────────────────────────
 model Note {
   id         String   @id @default(cuid())
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   authorId   String
   author     User     @relation(fields: [authorId], references: [id])
-  content    String
-  rawContent String?
+  content    String            // AI-cleaned content
+  rawContent String?           // Original user input / dictation
+  summary    String?           // AI-generated summary
+  actionItems String[]         // AI-extracted tasks
+  followUp   Boolean  @default(false)
+  followUpDate DateTime?
+  urgency    String   @default("normal") // low | normal | high | urgent
+  sentiment  String?           // positive | neutral | negative
+  aiProcessed Boolean @default(false)
   createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 }
 
+// ─── AI Summary ────────────────────────────────────────────
 model AISummary {
   id          String   @id @default(cuid())
   customerId  String
   customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
   summary     String
   keyPoints   String[]
+  sentiment   String?
+  nextSteps   String[]
+  riskIndicators String[]
+  opportunities String[]
   generatedAt DateTime @default(now())
 }
 
+// ─── AI Suggestions (Proactive) ────────────────────────────
+model AISuggestion {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // follow-up | scheduling | task | opportunity | route
+  title     String
+  content   String?
+  priority  Int      @default(3)
+  read      Boolean  @default(false)
+  applied   Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// ─── Task ──────────────────────────────────────────────────
+model Task {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  customerId  String?
+  customer    Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
+  title       String
+  description String?
+  priority    String   @default("medium") // low | medium | high | urgent
+  status      String   @default("pending") // pending | in_progress | completed | cancelled
+  dueDate     DateTime?
+  completedAt DateTime?
+  aiGenerated Boolean  @default(false)
+  sourceNoteId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── Route ─────────────────────────────────────────────────
 model Route {
-  id              String   @id @default(cuid())
-  userId          String
-  user            User     @relation(fields: [userId], references: [id])
-  name            String
-  date            DateTime @default(now())
-  totalDistanceKm Float    @default(0)
-  totalDurationMin Int     @default(0)
-  polyline        String?
-  createdAt       DateTime @default(now())
-  stops           RouteStop[]
+  id               String   @id @default(cuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
+  date             DateTime @default(now())
+  totalDistanceKm  Float    @default(0)
+  totalDurationMin Int      @default(0)
+  optimized        Boolean  @default(false)
+  polyline         String?
+  waypoints        String?  // JSON encoded intermediate points
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  stops            RouteStop[]
 }
 
 model RouteStop {
@@ -106,15 +254,54 @@ model RouteStop {
   customerId String
   customer   Customer @relation(fields: [customerId], references: [id])
   sortOrder  Int
+  estimatedArrival  DateTime?
+  estimatedDeparture DateTime?
+  durationMinutes   Int?
 }
 
+// ─── Appointment ───────────────────────────────────────────
 model Appointment {
   id            String   @id @default(cuid())
   userId        String
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   customerId    String?
+  customer      Customer? @relation(fields: [customerId], references: [id], onDelete: SetNull)
   title         String
+  description   String?
+  location      String?
   startTime     DateTime
   endTime       DateTime
+  allDay        Boolean  @default(false)
+  status        String   @default("scheduled") // scheduled | confirmed | completed | cancelled
   googleEventId String?
+  calendarLink  String?
+  aiGenerated   Boolean  @default(false)
   createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// ─── Google Calendar Token ─────────────────────────────────
+model GoogleCalendarToken {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken String
+  refreshToken String?
+  scope       String?
+  expiryDate  DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// ─── Daily Plan ────────────────────────────────────────────
+model DailyPlan {
+  id          String   @id @default(cuid())
+  userId      String
+  date        DateTime
+  content     Json              // Full daily plan structure
+  aiGenerated Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([userId, date])
 }

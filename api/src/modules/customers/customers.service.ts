@@ -1,56 +1,146 @@
 import { Injectable, NotFoundException } from "@nestjs/common";
 import { PrismaService } from "../prisma/prisma.service";
-import OpenAI from "openai";
-
-const ai = () => {
-  if (!process.env.OPENAI_API_KEY) return null;
-  return new OpenAI({ apiKey: process.env.OPENAI_API_KEY, baseURL: process.env.OPENAI_BASE_URL || "https://api.deepseek.com/v1" });
-};
-const MODEL = process.env.AI_MODEL || "deepseek-chat";
+import { CreateCustomerDto, UpdateCustomerDto } from "./dto/create-customer.dto";
+import { aiChat } from "../../common/utils/ai-client";
 
 @Injectable()
 export class CustomersService {
   constructor(private db: PrismaService) {}
 
-  findAll() { return this.db.customer.findMany({ orderBy: { updatedAt: "desc" } }); }
-
-  async findOne(id: string) {
-    const c = await this.db.customer.findUnique({ where: { id } });
-    if (!c) throw new NotFoundException();
-    return c;
-  }
-
-  create(d: any) {
-    return this.db.customer.create({
-      data: {
-        name: d.name, contactPerson: d.contact || d.contactPerson,
-        email: d.email, phone: d.phone, city: d.city, industry: d.industry,
+  async findAll(filters?: { search?: string; industry?: string }) {
+    const where: any = {};
+    if (filters?.search) {
+      where.OR = [
+        { name: { contains: filters.search, mode: "insensitive" } },
+        { city: { contains: filters.search, mode: "insensitive" } },
+        { contactPerson: { contains: filters.search, mode: "insensitive" } },
+      ];
+    }
+    if (filters?.industry) where.industry = filters.industry;
+    return this.db.customer.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      include: {
+        tags: { include: { tag: true } },
+        _count: { select: { activities: true, noteEntries: true, tasks: true } },
       },
     });
   }
 
-  async update(id: string, d: any) { await this.findOne(id); return this.db.customer.update({ where: { id }, data: d }); }
-  async remove(id: string) { await this.findOne(id); return this.db.customer.delete({ where: { id } }); }
-
-  getActivities(customerId: string) { return this.db.activity.findMany({ where: { customerId }, orderBy: { createdAt: "desc" } }); }
-
-  async addActivity(customerId: string, d: any) {
-    return this.db.activity.create({ data: { customerId, type: d.type || "note", title: d.content || d.title || "Activity" } });
+  async getStats() {
+    const [total, byIndustry, byStatus, activeCount] = await Promise.all([
+      this.db.customer.count(),
+      this.db.customer.groupBy({ by: ["industry"], _count: true }),
+      this.db.customer.groupBy({ by: ["status"], _count: true }),
+      this.db.customer.count({ where: { status: "active" } }),
+    ]);
+    return { total, active: activeCount, byIndustry, byStatus };
   }
 
-  getCommissions(customerId: string) { return this.db.commission.findMany({ where: { customerId }, orderBy: { date: "desc" } }); }
+  async findOne(id: string) {
+    const c = await this.db.customer.findUnique({
+      where: { id },
+      include: {
+        tags: { include: { tag: true } },
+        _count: { select: { activities: true, noteEntries: true, tasks: true, appointments: true } },
+      },
+    });
+    if (!c) throw new NotFoundException("Customer not found");
+    return c;
+  }
+
+  async create(dto: CreateCustomerDto) {
+    const { tags, ...data } = dto;
+    return this.db.customer.create({
+      data: {
+        ...data,
+        tags: tags?.length
+          ? {
+              create: await Promise.all(
+                tags.map(async (name) => {
+                  const tag = await this.db.tag.upsert({
+                    where: { name },
+                    create: { name, color: "#53bfff" },
+                    update: {},
+                  });
+                  return { tagId: tag.id };
+                }),
+              ),
+            }
+          : undefined,
+      },
+      include: { tags: { include: { tag: true } } },
+    });
+  }
+
+  async update(id: string, dto: UpdateCustomerDto) {
+    await this.findOne(id);
+    const { tags, ...data } = dto;
+    if (tags) {
+      await this.db.customerTag.deleteMany({ where: { customerId: id } });
+      for (const name of tags) {
+        const tag = await this.db.tag.upsert({
+          where: { name },
+          create: { name, color: "#53bfff" },
+          update: {},
+        });
+        await this.db.customerTag.create({ data: { customerId: id, tagId: tag.id } });
+      }
+    }
+    return this.db.customer.update({
+      where: { id },
+      data,
+      include: { tags: { include: { tag: true } } },
+    });
+  }
+
+  async remove(id: string) {
+    await this.findOne(id);
+    return this.db.customer.delete({ where: { id } });
+  }
+
+  getActivities(customerId: string) {
+    return this.db.activity.findMany({ where: { customerId }, orderBy: { createdAt: "desc" }, take: 50 });
+  }
+
+  async addActivity(customerId: string, body: { type?: string; title: string }) {
+    return this.db.activity.create({ data: { customerId, type: body.type || "note", title: body.title } });
+  }
+
+  getCommissions(customerId: string) {
+    return this.db.commission.findMany({ where: { customerId }, orderBy: { date: "desc" } });
+  }
+
+  getNotes(customerId: string) {
+    return this.db.note.findMany({ where: { customerId }, orderBy: { createdAt: "desc" }, take: 50 });
+  }
 
   async getSummary(customerId: string) {
-    const notes = await this.db.note.findMany({ where: { customerId }, take: 10, orderBy: { createdAt: "desc" } });
-    const activities = await this.db.activity.findMany({ where: { customerId }, take: 10 });
-    const client = ai();
-    if (!client || notes.length === 0) return { summary: "No data yet." };
+    const [notes, activities] = await Promise.all([
+      this.db.note.findMany({ where: { customerId }, take: 10, orderBy: { createdAt: "desc" } }),
+      this.db.activity.findMany({ where: { customerId }, take: 10 }),
+    ]);
+    if (notes.length === 0) return { summary: "Noch keine Daten vorhanden." };
+    const content = await aiChat(
+      "Du bist ein CRM-Assistent. Fasse die Kundendaten in 2-3 Sätzen zusammen. Extrahiere: Gesprächsthemen, offene Punkte, nächste Schritte. Antwort auf Deutsch. Präzise und wertvoll.",
+      `Notizen: ${notes.map((n: any) => n.content).join("; ")}. Aktivitäten: ${activities.map((a: any) => a.title).join("; ")}`,
+      300,
+    );
+    return { summary: content };
+  }
 
-    const r = await client.chat.completions.create({
-      model: MODEL,
-      messages: [{ role: "system", content: "Fasse diese Kundendaten in 2-3 Sätzen zusammen. Deutsch." }, { role: "user", content: `Notizen: ${notes.map(n=>n.content).join("; ")}. Aktivitäten: ${activities.map(a=>a.title).join("; ")}` }],
-      max_tokens: 200,
-    });
-    return { summary: r.choices[0]?.message?.content || "No summary." };
+  async getTimeline(customerId: string) {
+    const [notes, activities, appointments, tasks] = await Promise.all([
+      this.db.note.findMany({ where: { customerId }, orderBy: { createdAt: "desc" }, take: 20 }),
+      this.db.activity.findMany({ where: { customerId }, orderBy: { createdAt: "desc" }, take: 20 }),
+      this.db.appointment.findMany({ where: { customerId }, orderBy: { startTime: "desc" }, take: 20 }),
+      this.db.task.findMany({ where: { customerId }, orderBy: { createdAt: "desc" }, take: 20 }),
+    ]);
+    return [
+      ...notes.map((n: any) => ({ ...n, _type: "note" as const, _date: n.createdAt })),
+      ...activities.map((a: any) => ({ ...a, _type: "activity" as const, _date: a.createdAt })),
+      ...appointments.map((a: any) => ({ ...a, _type: "appointment" as const, _date: a.createdAt })),
+      ...tasks.map((t: any) => ({ ...t, _type: "task" as const, _date: t.createdAt })),
+    ].sort((a, b) => new Date(b._date).getTime() - new Date(a._date).getTime());
   }
 }

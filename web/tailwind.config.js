@@ -11,14 +11,17 @@ module.exports = {
         warning: { DEFAULT: "#fbbf24" },
         danger: { DEFAULT: "#f87171" },
       },
-      fontFamily: { sans: ["Inter", "system-ui", "sans-serif"] },
+      fontFamily: { sans: ["var(--font-inter)", "system-ui", "sans-serif"] },
       animation: {
         "fade-up": "fadeUp 0.6s ease-out",
         "scale-in": "scaleIn 0.3s ease-out",
+        "pulse-slow": "pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite",
+        "float": "float 6s ease-in-out infinite",
       },
       keyframes: {
         fadeUp: { "0%": { opacity: "0", transform: "translateY(12px)" }, "100%": { opacity: "1", transform: "translateY(0)" } },
         scaleIn: { "0%": { opacity: "0", transform: "scale(0.95)" }, "100%": { opacity: "1", transform: "scale(1)" } },
+        float: { "0%, 100%": { transform: "translateY(0)" }, "50%": { transform: "translateY(-8px)" } },
       },
     },
   },

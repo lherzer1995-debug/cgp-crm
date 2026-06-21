@@ -10,5 +10,11 @@
     "start": "node api/dist/main.js",
     "db:generate": "cd prisma && npx prisma generate",
     "db:push": "cd prisma && npx prisma db push"
+  },
+  "devDependencies": {
+    "prisma": "^6.19.3"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.3"
   }
 }
