@@ -8,7 +8,6 @@ import {
   AlertCircle, CheckCircle2, Clock3, Phone, Mail, AlertTriangle,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { UserButton, useUser } from "@clerk/nextjs";
 
 const API = "/api";
 
@@ -27,7 +26,6 @@ const rings = ["from-accent-400 to-accent-600","from-violet-400 to-fuchsia-500",
 const init = (n: string) => n.split(" ").map(w=>w[0]).slice(0,2).join("").toUpperCase();
 
 export default function Home() {
-  const { user } = useUser();
   const [view, setView] = useState<View>("dashboard");
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -83,10 +81,10 @@ export default function Home() {
           </nav>
         </div>
         <div className="mt-auto px-5 py-4 border-t border-white/[0.04] flex items-center gap-3">
-          <UserButton afterSignOutUrl="/" />
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent-500 to-accent-700 flex items-center justify-center text-[10px] font-bold">AD</div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-medium truncate">{user?.fullName || "User"}</p>
-            <p className="text-[10px] text-muted">{user?.primaryEmailAddress?.emailAddress}</p>
+            <p className="text-xs font-medium truncate">Admin</p>
+            <p className="text-[10px] text-muted">admin@cgp.de</p>
           </div>
         </div>
       </aside>
@@ -106,7 +104,7 @@ export default function Home() {
 
   function Dashboard(){return(
     <motion.div initial={{opacity:0,y:12}} animate={{opacity:1,y:0}} className="space-y-8">
-      <header><p className="text-[11px] font-medium text-muted uppercase tracking-[0.2em] mb-2">Field Sales Intelligence</p><h1 className="text-display">Good morning{user?.firstName ? `, ${user.firstName}` : ""}</h1></header>
+      <header><p className="text-[11px] font-medium text-muted uppercase tracking-[0.2em] mb-2">Field Sales Intelligence</p><h1 className="text-display">Good morning, Admin</h1></header>
       {error&&<ErrorBanner msg={error} onClose={()=>setError(null)}/>}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard icon={<Users className="w-5 h-5"/>} label="Total Customers" value={String(stats.totalCustomers)} ring="accent"/>
