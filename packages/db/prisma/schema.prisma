@@ -1,0 +1,287 @@
+// Premium CRM — PostgreSQL Schema
+// Koenigsegg-grade data model for AI-native field sales
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ── Tenants ─────────────────────────────────────────────────────────
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  slug      String   @unique
+  plan      Plan     @default(FREE)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users      User[]
+  customers  Customer[]
+  tags       Tag[]
+  segments   Segment[]
+  workflows  Workflow[]
+}
+
+enum Plan { FREE PRO ENTERPRISE }
+
+// ── Users ───────────────────────────────────────────────────────────
+model User {
+  id             String    @id @default(cuid())
+  clerkId        String    @unique
+  email          String    @unique
+  name           String
+  avatarUrl      String?
+  role           Role      @default(REP)
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  activities  Activity[]
+  notes       Note[]
+  routes      Route[]
+  appointments Appointment[]
+}
+
+enum Role { ADMIN MANAGER REP VIEWER }
+
+// ── Customers ───────────────────────────────────────────────────────
+model Customer {
+  id             String    @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  contactPerson  String?
+  email          String?
+  phone          String?
+  address        String?
+  city           String?
+  postalCode     String?
+  country        String    @default("DE")
+  latitude       Float?
+  longitude      Float?
+  industry       String?
+  website        String?
+  status         CustomerStatus @default(ACTIVE)
+  riskScore      Int       @default(0)
+  contractValue  Float     @default(0)
+  contractEnd    DateTime?
+  acquiredAt     DateTime?
+  notes          String?
+  avatarColor    String    @default("accent")
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  tags          CustomerTag[]
+  notes_rel     Note[]
+  activities    Activity[]
+  commissions   Commission[]
+  appointments  Appointment[]
+  routeStops    RouteStop[]
+  aiSummaries   AISummary[]
+  aiActions     AIAction[]
+  segmentMembers SegmentMember[]
+}
+
+enum CustomerStatus { ACTIVE INACTIVE CHURNED LEAD VIP }
+
+// ── Tags ────────────────────────────────────────────────────────────
+model Tag {
+  id             String    @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  color          String    @default("accent")
+  createdAt      DateTime  @default(now())
+
+  customers CustomerTag[]
+}
+
+model CustomerTag {
+  customerId String
+  tagId      String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([customerId, tagId])
+}
+
+// ── Notes — AI-Polished ─────────────────────────────────────────────
+model Note {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id])
+  content    String
+  rawContent String?  // original dictation/typing before AI polish
+  sentiment  Sentiment?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+enum Sentiment { POSITIVE NEUTRAL NEGATIVE }
+
+// ── Activities — AI-Generated Tasks ─────────────────────────────────
+model Activity {
+  id         String        @id @default(cuid())
+  customerId String
+  customer   Customer      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  assigneeId String?
+  assignee   User?         @relation(fields: [assigneeId], references: [id])
+  type       ActivityType
+  title      String
+  description String?
+  priority   Priority      @default(MEDIUM)
+  status     ActivityStatus @default(TODO)
+  dueDate    DateTime?
+  completedAt DateTime?
+  aiGenerated Boolean      @default(false)
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+}
+
+enum ActivityType { CALL MEETING FOLLOW_UP EMAIL VISIT NOTE TASK }
+enum Priority { LOW MEDIUM HIGH URGENT }
+enum ActivityStatus { TODO IN_PROGRESS DONE CANCELLED }
+
+// ── Commissions ─────────────────────────────────────────────────────
+model Commission {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  amount      Float
+  type        CommissionType
+  description String?
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+enum CommissionType { SALE RENEWAL BONUS REFERRAL }
+
+// ── Appointments + Calendar ─────────────────────────────────────────
+model Appointment {
+  id            String        @id @default(cuid())
+  customerId    String?
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  userId        String
+  user          User          @relation(fields: [userId], references: [id])
+  title         String
+  description   String?
+  startTime     DateTime
+  endTime       DateTime
+  location      String?
+  googleEventId String?       // synced from Google Calendar
+  status        AppointmentStatus @default(SCHEDULED)
+  aiGenerated   Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+enum AppointmentStatus { SCHEDULED CONFIRMED CANCELLED COMPLETED }
+
+// ── Routes — Google Maps Optimized ──────────────────────────────────
+model Route {
+  id              String     @id @default(cuid())
+  userId          String
+  user            User       @relation(fields: [userId], references: [id])
+  name            String
+  date            DateTime   @default(now())
+  status          RouteStatus @default(PLANNED)
+  totalDistanceKm Float      @default(0)
+  totalDurationMin Int       @default(0)
+  optimizedByAI   Boolean    @default(false)
+  polyline        String?    // encoded route polyline
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  stops RouteStop[]
+}
+
+model RouteStop {
+  id          String  @id @default(cuid())
+  routeId     String
+  route       Route   @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id])
+  sortOrder   Int
+  estimatedArrival DateTime?
+  notes       String?
+}
+
+enum RouteStatus { PLANNED IN_PROGRESS COMPLETED }
+
+// ── AI Pipeline ─────────────────────────────────────────────────────
+model AISummary {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  summary     String
+  keyPoints   String[]
+  generatedAt DateTime @default(now())
+}
+
+model AIAction {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  action      String
+  reason      String
+  priority    Priority
+  status      ActivityStatus @default(TODO)
+  createdAt   DateTime @default(now())
+}
+
+// ── Segments ────────────────────────────────────────────────────────
+model Segment {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  description    String?
+  filterJson     String?  // JSON filter criteria
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  members SegmentMember[]
+}
+
+model SegmentMember {
+  segmentId  String
+  customerId String
+  segment    Segment  @relation(fields: [segmentId], references: [id], onDelete: Cascade)
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+
+  @@id([segmentId, customerId])
+}
+
+// ── Workflows — AI Automation ───────────────────────────────────────
+model Workflow {
+  id             String   @id @default(cuid())
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id])
+  name           String
+  trigger        String   // e.g., "note.created", "customer.risk.high"
+  action         String   // e.g., "create.task", "send.notification"
+  config         String   // JSON config
+  enabled        Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+// ── Audit Log ───────────────────────────────────────────────────────
+model AuditLog {
+  id         String   @id @default(cuid())
+  userId     String?
+  action     String
+  entityType String
+  entityId   String?
+  oldValue   String?
+  newValue   String?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+}

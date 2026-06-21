@@ -1,0 +1,18 @@
+{
+  "name": "cgp-crm-pro",
+  "private": true,
+  "scripts": {
+    "dev": "turbo dev",
+    "build": "turbo build",
+    "start": "turbo start",
+    "lint": "turbo lint",
+    "db:push": "turbo db:push",
+    "db:generate": "turbo db:generate",
+    "db:studio": "turbo db:studio"
+  },
+  "devDependencies": {
+    "turbo": "^2.3.0",
+    "typescript": "^5.6.0"
+  },
+  "packageManager": "pnpm@9.12.0"
+}

@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-surface-base text-white font-sans antialiased;
+  }
+
+  ::selection {
+    @apply bg-accent-600/30 text-white;
+  }
+
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-white/[0.06] rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-white/[0.10]; }
+}
+
+@layer components {
+  /* Aurora ambient background */
+  .aurora-bg {
+    @apply relative;
+  }
+  .aurora-bg::before {
+    content: "";
+    @apply fixed inset-0 pointer-events-none z-0;
+    background:
+      radial-gradient(ellipse 80% 60% at 50% -20%, rgba(43,159,255,0.06), transparent 60%),
+      radial-gradient(ellipse 50% 50% at 80% 80%, rgba(139,92,246,0.04), transparent 60%),
+      radial-gradient(ellipse 60% 40% at 20% 50%, rgba(45,212,191,0.03), transparent 50%);
+  }
+
+  /* Glass surfaces */
+  .glass-surface {
+    @apply bg-surface-overlay/60 backdrop-blur-xl border border-white/[0.04];
+  }
+  .glass-raised {
+    @apply bg-surface-overlay/80 backdrop-blur-2xl border border-white/[0.06] shadow-card;
+  }
+  .glass-elevated {
+    @apply bg-surface-muted/90 backdrop-blur-3xl border border-white/[0.08] shadow-card-hover;
+  }
+
+  /* Buttons */
+  .btn-primary {
+    @apply bg-accent-600 hover:bg-accent-500 text-white font-semibold rounded-xl px-5 py-2.5 text-sm
+           transition-all duration-200 shadow-glow-sm active:scale-[0.98]
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-ghost {
+    @apply text-white/70 hover:text-white hover:bg-white/[0.04] rounded-xl px-4 py-2.5 text-sm
+           transition-all duration-200;
+  }
+  .btn-glass {
+    @apply glass-surface hover:bg-white/[0.06] text-white/80 hover:text-white rounded-xl px-4 py-2.5
+           text-sm transition-all duration-200;
+  }
+
+  /* Inputs */
+  .input-premium {
+    @apply w-full bg-surface-overlay border border-surface-border rounded-xl px-4 py-3 text-sm
+           text-white placeholder:text-muted/50 outline-none
+           focus:border-accent-500/30 focus:ring-1 focus:ring-accent-500/15 transition-all duration-200;
+  }
+
+  /* Bento grid cards */
+  .bento-card {
+    @apply glass-raised rounded-2xl p-6 transition-all duration-500 hover:border-white/[0.10];
+  }
+
+  /* Skeleton loading */
+  .skeleton {
+    @apply relative overflow-hidden rounded-lg bg-white/[0.03];
+  }
+  .skeleton::after {
+    content: "";
+    @apply absolute inset-0;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.03), transparent);
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+  }
+
+  /* Text gradients */
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-accent-400 to-violet-400;
+  }
+  .text-gradient-warm {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-amber-400 to-rose-400;
+  }
+
+  /* Status badges */
+  .badge-premium {
+    @apply inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[10px] font-semibold;
+  }
+}
