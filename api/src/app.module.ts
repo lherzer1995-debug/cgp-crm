@@ -11,9 +11,11 @@ import { CalendarModule } from "./modules/calendar/calendar.module";
 import { MapsModule } from "./modules/maps/maps.module";
 import { OrganizationsModule } from "./modules/organizations/organizations.module";
 import { AuthModule } from "./modules/auth/auth.module";
+import { RootModule } from "./modules/root/root.module";
 
 @Module({
   imports: [
+    RootModule,
     PrismaModule,
     CustomersModule,
     AiModule,

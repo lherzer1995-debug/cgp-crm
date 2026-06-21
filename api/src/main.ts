@@ -6,22 +6,12 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule);
 
   app.enableCors({ origin: true, credentials: true });
-  app.setGlobalPrefix("api");
+  app.setGlobalPrefix("api", { exclude: ["/"] }); // root stays without prefix
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
 
-  // Health check at root
-  app.use("/", (_req: any, res: any) => {
-    res.json({
-      status: "ok",
-      app: "CGP CRM",
-      version: "1.0.0",
-      api: "/api",
-      docs: "/api/customers",
-    });
-  });
-
-  // Railway internal port
-  await app.listen(5000, "0.0.0.0");
-  console.log(`CGP CRM API ready on port 5000`);
+  // Use fixed internal port for API
+  const port = 5000;
+  await app.listen(port, "0.0.0.0");
+  console.log(`CGP CRM API ready on port ${port}`);
 }
 bootstrap();

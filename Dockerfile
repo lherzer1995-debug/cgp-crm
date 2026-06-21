@@ -15,19 +15,27 @@ RUN cd web && npm install
 # Copy source
 COPY . .
 
-# Build
-RUN cd api && npx prisma generate --schema=../prisma/schema.prisma && npm run build
+# Build API with Prisma
+RUN cd api && npx prisma generate --schema=../prisma/schema.prisma && \
+    cp -r ../node_modules/.prisma node_modules/.prisma && \
+    cp -r ../node_modules/@prisma/client node_modules/@prisma/client && \
+    npm run build
+
+# Build Web
 RUN cd web && npm run build
 
 ENV NODE_ENV=production
 
-# Startup script: API on :5000 (internal), Next.js on $PORT (public)
-RUN printf '#!/bin/sh\n\
-  echo "Starting API on port 5000..."\n\
-  cd /app/api && node dist/main.js &\n\
-  echo "Starting Next.js on port $PORT..."\n\
-  cd /app/web && npx next start -p "$PORT"\n' > /app/start.sh && chmod +x /app/start.sh
+# Startup script
+RUN echo '#!/bin/sh' > /app/start.sh && \
+    echo 'set -e' >> /app/start.sh && \
+    echo 'echo "🚀 Starting CGP CRM..."' >> /app/start.sh && \
+    echo 'echo "  → API on port 5000 (internal)"' >> /app/start.sh && \
+    echo 'cd /app/api && node dist/main.js &' >> /app/start.sh && \
+    echo 'echo "  → Next.js on port $PORT (public)"' >> /app/start.sh && \
+    echo 'cd /app/web && npx next start -p "$PORT"' >> /app/start.sh && \
+    chmod +x /app/start.sh
 
 EXPOSE 3000
 
-CMD ["sh", "/app/start.sh"]
+CMD ["/app/start.sh"]
