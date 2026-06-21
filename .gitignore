@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.next/
+out/
+.env
+.env.local
+*.db
+node_modules
+.turbo/
+apps/
+packages/

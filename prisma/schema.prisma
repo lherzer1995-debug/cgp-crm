@@ -1,0 +1,116 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String   @id @default(cuid())
+  clerkId   String   @unique
+  email     String   @unique
+  name      String
+  createdAt DateTime @default(now())
+  customers Customer[]
+  notes     Note[]
+  routes    Route[]
+}
+
+model Customer {
+  id            String   @id @default(cuid())
+  name          String
+  contactPerson String?
+  email         String?
+  phone         String?
+  address       String?
+  city          String?
+  industry      String?
+  status        String   @default("active")
+  riskScore     Int      @default(0)
+  latitude      Float?
+  longitude     Float?
+  notes         String?
+  contractEnd   DateTime?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  activities    Activity[]
+  commissions   Commission[]
+  aiSummaries   AISummary[]
+}
+
+model Activity {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  type        String   @default("note")
+  title       String
+  done        Boolean  @default(false)
+  dueDate     DateTime?
+  aiGenerated Boolean  @default(false)
+  createdAt   DateTime @default(now())
+}
+
+model Commission {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  amount      Float
+  type        String   @default("sale")
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+}
+
+model Note {
+  id         String   @id @default(cuid())
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id])
+  content    String
+  rawContent String?
+  createdAt  DateTime @default(now())
+}
+
+model AISummary {
+  id          String   @id @default(cuid())
+  customerId  String
+  customer    Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  summary     String
+  keyPoints   String[]
+  generatedAt DateTime @default(now())
+}
+
+model Route {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id])
+  name            String
+  date            DateTime @default(now())
+  totalDistanceKm Float    @default(0)
+  totalDurationMin Int     @default(0)
+  polyline        String?
+  createdAt       DateTime @default(now())
+  stops           RouteStop[]
+}
+
+model RouteStop {
+  id         String   @id @default(cuid())
+  routeId    String
+  route      Route    @relation(fields: [routeId], references: [id], onDelete: Cascade)
+  customerId String
+  customer   Customer @relation(fields: [customerId], references: [id])
+  sortOrder  Int
+}
+
+model Appointment {
+  id            String   @id @default(cuid())
+  userId        String
+  customerId    String?
+  title         String
+  startTime     DateTime
+  endTime       DateTime
+  googleEventId String?
+  createdAt     DateTime @default(now())
+}

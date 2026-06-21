@@ -1,0 +1,14 @@
+{
+  "name": "cgp-crm",
+  "private": true,
+  "scripts": {
+    "dev:web": "cd web && next dev -p 3000",
+    "dev:api": "cd api && nest start --watch",
+    "build:web": "cd web && next build",
+    "build:api": "cd api && nest build",
+    "build": "npm run build:api && npm run build:web",
+    "start": "node api/dist/main.js",
+    "db:generate": "cd prisma && npx prisma generate",
+    "db:push": "cd prisma && npx prisma db push"
+  }
+}
