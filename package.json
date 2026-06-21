@@ -8,6 +8,7 @@
     "build:api": "cd api && nest build",
     "build": "npm run build:api && npm run build:web",
     "start": "node api/dist/main.js",
+    "start:all": "node api/dist/main.js & cd web && npx next start -p ${PORT:-3000}",
     "db:generate": "cd prisma && npx prisma generate",
     "db:push": "cd prisma && npx prisma db push"
   },
