@@ -5,8 +5,9 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard, Users, ListTodo, Map, CalendarDays,
-  Cpu, ChevronLeft, Sparkles,
+  Cpu, ChevronLeft, Sparkles, LogOut,
 } from "lucide-react";
+import { UserButton, useUser } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
 import { useState } from "react";
 
@@ -79,13 +80,46 @@ export default function Sidebar() {
         })}
       </nav>
 
-      {/* Collapse Toggle */}
-      <button
-        onClick={() => setCollapsed(!collapsed)}
-        className="flex items-center justify-center h-12 border-t border-white/[0.04] text-white/30 hover:text-white/60 transition-colors"
+      {/* User Section */}
+      <div
+        className={cn(
+          "flex items-center gap-3 px-4 py-3 border-t border-white/[0.04]",
+          collapsed && "justify-center px-2",
+        )}
       >
-        <ChevronLeft className={cn("w-4 h-4 transition-transform", collapsed && "rotate-180")} />
-      </button>
+        <UserButton
+          afterSignOutUrl="/login"
+          appearance={{
+            elements: {
+              avatarBox:
+                "w-8 h-8 rounded-xl border-2 border-white/[0.08] hover:border-accent-500/30 transition-all",
+              userButtonPopoverCard:
+                "bg-[#111118]/95 backdrop-blur-2xl border border-white/[0.06] rounded-2xl shadow-2xl",
+              userButtonPopoverActions: "border-white/[0.04]",
+              userButtonPopoverActionButton:
+                "text-white/60 hover:text-white hover:bg-white/[0.04] transition-colors",
+              userButtonPopoverActionButtonText: "text-sm",
+              userPreviewMainIdentifier: "text-white font-medium",
+              userPreviewSecondaryIdentifier: "text-white/40 text-xs",
+            },
+          }}
+        />
+        {!collapsed && <UserInfo />}
+      </div>
     </motion.aside>
+  );
+}
+
+function UserInfo() {
+  const { user } = useUser();
+  return (
+    <div className="flex-1 min-w-0">
+      <p className="text-sm font-medium truncate">
+        {user?.fullName || "Benutzer"}
+      </p>
+      <p className="text-xs text-white/30 truncate">
+        {user?.primaryEmailAddress?.emailAddress || ""}
+      </p>
+    </div>
   );
 }
