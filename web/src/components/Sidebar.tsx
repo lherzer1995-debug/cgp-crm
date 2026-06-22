@@ -5,11 +5,10 @@ import Link from "next/link";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard, Users, ListTodo, Map, CalendarDays,
-  Cpu, ChevronLeft, Sparkles, LogOut,
+  Cpu, ChevronLeft, Sparkles,
 } from "lucide-react";
-import { UserButton, useUser } from "@clerk/nextjs";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 const navItems = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -23,6 +22,15 @@ const navItems = [
 export default function Sidebar() {
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
+  const [UserBtn, setUserBtn] = useState<any>(null);
+
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+      import("@clerk/nextjs").then((mod) => {
+        if (mod.UserButton) setUserBtn(() => mod.UserButton);
+      });
+    }
+  }, []);
 
   return (
     <motion.aside
@@ -87,39 +95,36 @@ export default function Sidebar() {
           collapsed && "justify-center px-2",
         )}
       >
-        <UserButton
-          afterSignOutUrl="/login"
-          appearance={{
-            elements: {
-              avatarBox:
-                "w-8 h-8 rounded-xl border-2 border-white/[0.08] hover:border-accent-500/30 transition-all",
-              userButtonPopoverCard:
-                "bg-[#111118]/95 backdrop-blur-2xl border border-white/[0.06] rounded-2xl shadow-2xl",
-              userButtonPopoverActions: "border-white/[0.04]",
-              userButtonPopoverActionButton:
-                "text-white/60 hover:text-white hover:bg-white/[0.04] transition-colors",
-              userButtonPopoverActionButtonText: "text-sm",
-              userPreviewMainIdentifier: "text-white font-medium",
-              userPreviewSecondaryIdentifier: "text-white/40 text-xs",
-            },
-          }}
-        />
-        {!collapsed && <UserInfo />}
+        {UserBtn ? (
+          <UserBtn
+            afterSignOutUrl="/login"
+            appearance={{
+              elements: {
+                avatarBox:
+                  "w-8 h-8 rounded-xl border-2 border-white/[0.08] hover:border-accent-500/30 transition-all",
+                userButtonPopoverCard:
+                  "bg-[#111118]/95 backdrop-blur-2xl border border-white/[0.06] rounded-2xl shadow-2xl",
+                userButtonPopoverActions: "border-white/[0.04]",
+                userButtonPopoverActionButton:
+                  "text-white/60 hover:text-white hover:bg-white/[0.04] transition-colors",
+                userButtonPopoverActionButtonText: "text-sm",
+                userPreviewMainIdentifier: "text-white font-medium",
+                userPreviewSecondaryIdentifier: "text-white/40 text-xs",
+              },
+            }}
+          />
+        ) : (
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-accent-400 to-purple-500 flex items-center justify-center text-xs font-semibold flex-shrink-0">
+            CG
+          </div>
+        )}
+        {!collapsed && (
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-medium truncate">CGP CRM</p>
+            <p className="text-xs text-white/30 truncate">Premium Edition</p>
+          </div>
+        )}
       </div>
     </motion.aside>
-  );
-}
-
-function UserInfo() {
-  const { user } = useUser();
-  return (
-    <div className="flex-1 min-w-0">
-      <p className="text-sm font-medium truncate">
-        {user?.fullName || "Benutzer"}
-      </p>
-      <p className="text-xs text-white/30 truncate">
-        {user?.primaryEmailAddress?.emailAddress || ""}
-      </p>
-    </div>
   );
 }

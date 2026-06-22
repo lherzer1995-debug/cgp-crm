@@ -1,9 +1,8 @@
 "use client";
 
 import { usePathname } from "next/navigation";
-import { Bell, Search, Sparkles } from "lucide-react";
-import { UserButton, useUser } from "@clerk/nextjs";
-import { useState } from "react";
+import { Bell, Search, Sparkles, LogOut } from "lucide-react";
+import { useState, useEffect } from "react";
 
 const pageTitles: Record<string, string> = {
   "/dashboard": "Dashboard",
@@ -16,8 +15,16 @@ const pageTitles: Record<string, string> = {
 
 export default function Navbar() {
   const pathname = usePathname();
-  const { user } = useUser();
   const [search, setSearch] = useState("");
+  const [UserBtn, setUserBtn] = useState<any>(null);
+
+  useEffect(() => {
+    if (process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY) {
+      import("@clerk/nextjs").then((mod) => {
+        if (mod.UserButton) setUserBtn(() => mod.UserButton);
+      });
+    }
+  }, []);
 
   const title =
     Object.entries(pageTitles).find(([key]) => pathname.startsWith(key))?.[1] ||
@@ -50,23 +57,29 @@ export default function Navbar() {
           <span className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-accent-500" />
         </button>
 
-        <UserButton
-          afterSignOutUrl="/login"
-          appearance={{
-            elements: {
-              avatarBox:
-                "w-8 h-8 rounded-full border-2 border-white/[0.08] hover:border-accent-500/30 transition-all",
-              userButtonPopoverCard:
-                "bg-[#111118]/95 backdrop-blur-2xl border border-white/[0.06] rounded-2xl shadow-2xl",
-              userButtonPopoverActions: "border-white/[0.04]",
-              userButtonPopoverActionButton:
-                "text-white/60 hover:text-white hover:bg-white/[0.04] transition-colors",
-              userButtonPopoverActionButtonText: "text-sm",
-              userPreviewMainIdentifier: "text-white font-medium",
-              userPreviewSecondaryIdentifier: "text-white/40 text-xs",
-            },
-          }}
-        />
+        {UserBtn ? (
+          <UserBtn
+            afterSignOutUrl="/login"
+            appearance={{
+              elements: {
+                avatarBox:
+                  "w-8 h-8 rounded-full border-2 border-white/[0.08] hover:border-accent-500/30 transition-all",
+                userButtonPopoverCard:
+                  "bg-[#111118]/95 backdrop-blur-2xl border border-white/[0.06] rounded-2xl shadow-2xl",
+                userButtonPopoverActions: "border-white/[0.04]",
+                userButtonPopoverActionButton:
+                  "text-white/60 hover:text-white hover:bg-white/[0.04] transition-colors",
+                userButtonPopoverActionButtonText: "text-sm",
+                userPreviewMainIdentifier: "text-white font-medium",
+                userPreviewSecondaryIdentifier: "text-white/40 text-xs",
+              },
+            }}
+          />
+        ) : (
+          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-accent-400 to-purple-500 flex items-center justify-center text-xs font-semibold">
+            AD
+          </div>
+        )}
       </div>
     </header>
   );
