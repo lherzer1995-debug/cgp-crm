@@ -1,21 +1,18 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-const isPublicRoute = createRouteMatcher(["/login(.*)", "/signup(.*)", "/", "/api(.*)"]);
+// Auth is handled client-side by ClerkProvider.
+// Middleware is pass-through to avoid 500 when Clerk keys are missing.
+// When Clerk keys are configured, add:
+//   import { clerkMiddleware } from "@clerk/nextjs/server"
+// and replace the default export.
 
-// Graceful fallback: if Clerk keys are not set, allow all requests
-const hasClerkKeys = !!(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY && process.env.CLERK_SECRET_KEY);
-
-export default hasClerkKeys
-  ? clerkMiddleware(async (auth, req) => {
-      if (!isPublicRoute(req)) {
-        await auth.protect();
-      }
-    })
-  : clerkMiddleware();
+export default async function middleware(_req: NextRequest): Promise<NextResponse> {
+  return NextResponse.next();
+}
 
 export const config = {
   matcher: [
-    "/((?!_next|[^?]*\\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
-    "/(api|trpc)(.*)",
+    "/((?!_next|[^?]*\.(?:html?|css|js(?!on)|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest)).*)",
   ],
 };
