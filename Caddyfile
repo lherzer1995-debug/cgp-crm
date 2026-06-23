@@ -1,5 +1,13 @@
-:8080 {
+:{$PORT:8080} {
     root * /usr/share/caddy
-    file_server
+    encode gzip zstd
     try_files {path} /index.html
+    file_server
+
+    header {
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        X-Frame-Options "DENY"
+        -Server
+    }
 }

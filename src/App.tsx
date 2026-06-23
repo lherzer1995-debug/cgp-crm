@@ -16,15 +16,17 @@ export default function App() {
   const [isMobile, setIsMobile] = useState(false);
 
   useEffect(() => {
-    const check = () => {
-      const mobile = window.matchMedia('(max-width: 900px)').matches;
+    const mediaQuery = window.matchMedia('(max-width: 900px)');
+
+    const syncViewport = () => {
+      const mobile = mediaQuery.matches;
       setIsMobile(mobile);
       if (mobile) setCollapsed(false);
     };
 
-    check();
-    window.addEventListener('resize', check);
-    return () => window.removeEventListener('resize', check);
+    syncViewport();
+    mediaQuery.addEventListener('change', syncViewport);
+    return () => mediaQuery.removeEventListener('change', syncViewport);
   }, []);
 
   const nav = useCallback((p: Page) => {
