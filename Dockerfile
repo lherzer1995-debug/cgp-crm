@@ -1,21 +1,18 @@
 # ── Stage 1: Build ─────────────────────────────────────────
-FROM node:22-alpine AS build
+FROM node:22-alpine AS builder
 
 WORKDIR /app
 
-# Force public registry in npm command (Docker builder ignores .npmrc)
 COPY package.json package-lock.json ./
-RUN npm install -g npm@11.17.0 --registry=https://registry.npmjs.org/ && \
-    npm install --registry=https://registry.npmjs.org/ --ignore-scripts --no-audit --no-fund --loglevel=warn
+RUN npm ci --registry=https://registry.npmjs.org/ --no-audit --no-fund
 
 COPY . .
 RUN npm run build
 
-# ── Stage 2: Serve with Nginx ──────────────────────────────
-FROM nginx:alpine
+# ── Stage 2: Serve with Caddy ──────────────────────────────
+FROM caddy:2-alpine
 
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY Caddyfile /etc/caddy/Caddyfile
+COPY --from=builder /app/dist /usr/share/caddy
 
-EXPOSE 80
-
-CMD ["nginx", "-g", "daemon off;"]
+EXPOSE 8080
