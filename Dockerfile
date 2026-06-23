@@ -4,13 +4,12 @@
 FROM node:22-alpine AS builder
 
 WORKDIR /app
-ENV NODE_ENV=production
 ENV npm_config_registry=https://registry.npmjs.org/
 ENV npm_config_audit=false
 ENV npm_config_fund=false
 
 COPY package.json package-lock.json .npmrc ./
-RUN npm ci --no-audit --no-fund
+RUN npm ci --include=dev --no-audit --no-fund
 
 COPY . .
 RUN npm run build
