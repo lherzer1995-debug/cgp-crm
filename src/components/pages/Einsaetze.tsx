@@ -1,356 +1,198 @@
-import { useState, useMemo } from 'react';
-import {
-  Search, Plus, MapPin, User, Clock, Calendar,
-  ChevronRight, X, Phone,
-  CheckCircle2, AlertCircle, Truck, Navigation, List, CalendarDays,
-} from 'lucide-react';
-import { cn } from '../../utils/cn';
-import { serviceEvents, getInitials, type ServiceEvent } from '../../data/store';
+import { useMemo, useState } from 'react';
+import { Calendar, ChevronRight, Clock, MapPin, Plus, Search, Truck, User, X } from 'lucide-react';
+import { getInitials, useAppStore } from '../../data/app-store';
+import { EmptyState, SectionHeader, StatusBadge } from '../ui/common';
+import type { ServiceStatus } from '../../data/store';
 
-const stCfg: Record<string, { label: string; color: string; icon: React.ElementType }> = {
-  geplant: { label: 'Geplant', color: '#06b6d4', icon: Calendar },
-  unterwegs: { label: 'Unterwegs', color: '#f59e0b', icon: Truck },
-  'vor-ort': { label: 'Vor Ort', color: '#8b5cf6', icon: Navigation },
-  abgeschlossen: { label: 'Abgeschlossen', color: '#10b981', icon: CheckCircle2 },
-  abgesagt: { label: 'Abgesagt', color: '#71717a', icon: AlertCircle },
-};
+const filters: Array<'all' | ServiceStatus> = ['all', 'geplant', 'unterwegs', 'vor-ort', 'abgeschlossen', 'abgesagt'];
 
-export default function Einsaetze() {
-  const [search, setSearch] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [selectedEv, setSelectedEv] = useState<ServiceEvent | null>(null);
-  const [view, setView] = useState<'list' | 'timeline'>('list');
+export default function Einsaetze({ search }: { search: string }) {
+  const { serviceEvents, customers, addServiceEvent, addServiceNote, updateServiceStatus } = useAppStore();
+  const [statusFilter, setStatusFilter] = useState<'all' | ServiceStatus>('all');
+  const [localSearch, setLocalSearch] = useState('');
+  const [selectedId, setSelectedId] = useState<string | null>(serviceEvents[0]?.id || null);
 
+  const query = (search || localSearch).toLowerCase();
   const filtered = useMemo(() => {
-    let r = [...serviceEvents];
-    if (search) {
-      const q = search.toLowerCase();
-      r = r.filter(e => 
-        e.customerName.toLowerCase().includes(q) || 
-        e.title.toLowerCase().includes(q) || 
-        e.assignee.toLowerCase().includes(q)
-      );
-    }
-    if (statusFilter !== 'all') r = r.filter(e => e.status === statusFilter);
-    return r;
-  }, [search, statusFilter]);
-
-  const byDate = useMemo(() => {
-    const map: Record<string, ServiceEvent[]> = {};
-    filtered.forEach(ev => {
-      if (!map[ev.date]) map[ev.date] = [];
-      map[ev.date].push(ev);
+    return serviceEvents.filter((event) => {
+      const matchesQuery =
+        !query ||
+        event.customerName.toLowerCase().includes(query) ||
+        event.title.toLowerCase().includes(query) ||
+        event.assignee.toLowerCase().includes(query);
+      const matchesStatus = statusFilter === 'all' || event.status === statusFilter;
+      return matchesQuery && matchesStatus;
     });
-    return Object.entries(map).sort(([a], [b]) => a.localeCompare(b));
-  }, [filtered]);
+  }, [serviceEvents, query, statusFilter]);
 
-  const stats = {
-    geplant: serviceEvents.filter(e => e.status === 'geplant').length,
-    unterwegs: serviceEvents.filter(e => e.status === 'unterwegs').length,
-    'vor-ort': serviceEvents.filter(e => e.status === 'vor-ort').length,
-    abgeschlossen: serviceEvents.filter(e => e.status === 'abgeschlossen').length,
+  const selected = serviceEvents.find((event) => event.id === selectedId) || null;
+
+  const createEvent = () => {
+    const customer = customers[0];
+    const title = window.prompt('Einsatzname', 'Wartung vor Ort');
+    if (!title || !customer) return;
+    addServiceEvent({ customerId: customer.id, title, date: '2026-06-24' });
   };
 
   return (
-    <div className="flex min-h-[calc(100dvh-76px)]">
-      {/* Main Content */}
-      <div className={cn(
-        'flex flex-col overflow-hidden transition-all duration-300',
-        selectedEv ? 'hidden lg:flex lg:flex-1' : 'w-full'
-      )}>
-        {/* Stats Bar */}
-        <div className="px-4 sm:px-6 lg:px-8 py-4 flex items-center gap-6 border-b border-white/[0.08] overflow-x-auto">
-          {Object.entries(stats).map(([key, val]) => {
-            const cfg = stCfg[key];
-            const Icon = cfg.icon;
-            return (
-              <div key={key} className="flex items-center gap-3 shrink-0">
-                <div 
-                  className="w-10 h-10 rounded-2xl flex items-center justify-center shadow-lg"
-                  style={{ background: `linear-gradient(135deg, ${cfg.color}20, ${cfg.color}10)` }}
-                >
-                  <Icon className="w-5 h-5" style={{ color: cfg.color }} />
-                </div>
-                <div>
-                  <p className="text-[20px] font-bold text-white">{val}</p>
-                  <p className="text-[15px] text-smoke uppercase tracking-wider">{cfg.label}</p>
-                </div>
+    <div className="grid min-h-[calc(100dvh-76px)] gap-0 xl:grid-cols-[minmax(0,1fr)_400px]">
+      <section className="border-r border-white/[0.08]">
+        <div className="space-y-5 p-4 sm:p-6 lg:p-8">
+          <SectionHeader
+            title="Einsatzliste"
+            description="Status, Zeitfenster und Rückmeldungen in einer Ansicht."
+            action={<button className="btn btn-primary" onClick={createEvent}><Plus className="h-4 w-4" />Einsatz planen</button>}
+          />
+
+          <div className="rounded-[28px] border border-white/[0.08] bg-white/[0.03] p-5">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+              <div className="relative flex-1">
+                <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ash" />
+                <input
+                  type="search"
+                  value={search ? search : localSearch}
+                  onChange={(event) => setLocalSearch(event.target.value)}
+                  placeholder="Kunde, Einsatz oder Techniker suchen"
+                  className="h-11 w-full rounded-2xl border border-white/[0.09] bg-white/[0.04] pl-11 pr-4 text-[14px] text-cloud placeholder:text-ash focus:border-primary/40 focus:outline-none"
+                />
               </div>
-            );
-          })}
-
-          <div className="flex-1" />
-
-          {/* Controls */}
-          <div className="flex items-center gap-3 shrink-0">
-            {/* Search */}
-            <div className="relative group">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-smoke" />
-              <input
-                type="text"
-                placeholder="Einsätze suchen…"
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className={cn(
-                  'w-[200px] pl-11 pr-4 py-2.5',
-                  'bg-white/[0.045] border border-white/[0.09] rounded-2xl',
-                  'text-[15px] text-cloud placeholder-smoke',
-                  'focus:outline-none focus:border-primary/30',
-                  'transition-all duration-200'
-                )}
-              />
+              <div className="flex flex-wrap gap-2">
+                {filters.map((filter) => (
+                  <button key={filter} onClick={() => setStatusFilter(filter)} className={`chip ${statusFilter === filter ? 'chip-active' : ''}`}>
+                    {filter}
+                  </button>
+                ))}
+              </div>
             </div>
-
-            {/* Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={e => setStatusFilter(e.target.value)}
-              className={cn(
-                'px-4 py-2.5 rounded-2xl',
-                'bg-white/[0.045] border border-white/[0.09]',
-                'text-[15px] text-mist',
-                'focus:outline-none appearance-none cursor-pointer'
-              )}
-            >
-              <option value="all">Alle Status</option>
-              <option value="geplant">Geplant</option>
-              <option value="unterwegs">Unterwegs</option>
-              <option value="vor-ort">Vor Ort</option>
-              <option value="abgeschlossen">Abgeschlossen</option>
-              <option value="abgesagt">Abgesagt</option>
-            </select>
-
-            {/* View Toggle */}
-            <div className="flex p-1 bg-white/[0.045] border border-white/[0.09] rounded-2xl">
-              <button
-                onClick={() => setView('list')}
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-[15px] font-medium transition-all',
-                  view === 'list' ? 'bg-primary/10 text-primary-light' : 'text-smoke hover:text-white'
-                )}
-              >
-                <List className="w-4 h-4" />
-              </button>
-              <button
-                onClick={() => setView('timeline')}
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-[15px] font-medium transition-all',
-                  view === 'timeline' ? 'bg-primary/10 text-primary-light' : 'text-smoke hover:text-white'
-                )}
-              >
-                <CalendarDays className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Add */}
-            <button className={cn(
-              'flex items-center gap-2 px-4 py-2.5',
-              'bg-gradient-to-r from-primary to-[#5558e3]',
-              'rounded-2xl text-[15px] font-medium text-white',
-              'shadow-lg shadow-primary/20',
-              'hover:shadow-xl hover:shadow-primary/30',
-              'transition-all duration-200'
-            )}>
-              <Plus className="w-4 h-4" />
-              <span>Neuer Einsatz</span>
-            </button>
           </div>
-        </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto">
-          {view === 'list' ? (
-            <table className="w-full">
-              <thead className="sticky top-0 z-10 bg-void/95 backdrop-blur-xl">
-                <tr className="border-b border-white/[0.08]">
-                  <th className="text-left pl-8 pr-4 py-4 text-micro text-smoke">Kunde</th>
-                  <th className="text-left px-4 py-4 text-micro text-smoke">Einsatztyp</th>
-                  <th className="text-left px-4 py-4 text-micro text-smoke">Status</th>
-                  <th className="text-left px-4 py-4 text-micro text-smoke">Datum</th>
-                  <th className="text-left px-4 py-4 text-micro text-smoke">Zeit</th>
-                  <th className="text-left px-4 py-4 text-micro text-smoke">Techniker</th>
-                  <th className="text-left px-4 py-4 text-micro text-smoke">Adresse</th>
-                  <th className="w-12 px-4 py-4"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((ev, idx) => {
-                  const cfg = stCfg[ev.status];
-                  return (
-                    <tr
-                      key={ev.id}
-                      onClick={() => setSelectedEv(ev)}
-                      className={cn(
-                        'table-row cursor-pointer group animate-in'
-                      )}
-                      style={{ animationDelay: `${idx * 20}ms` }}
-                    >
-                      <td className="pl-8 pr-4 py-4">
-                        <div className="flex items-center gap-3">
-                          <div 
-                            className="w-9 h-9 rounded-lg flex items-center justify-center text-[15px] font-bold text-white shrink-0"
-                            style={{ background: ev.assigneeAvatar }}
-                          >
-                            {getInitials(ev.customerName)}
-                          </div>
-                          <p className="text-body font-medium text-white group-hover:text-primary-light transition-colors truncate">
-                            {ev.customerName}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4 text-caption text-mist">{ev.title}</td>
-                      <td className="px-4 py-4">
-                        <span 
-                          className="inline-flex items-center gap-1.5 text-[15px] font-semibold px-2.5 py-1 rounded-full"
-                          style={{ background: `${cfg.color}12`, color: cfg.color }}
-                        >
-                          <span className="w-1.5 h-1.5 rounded-full" style={{ background: cfg.color }} />
-                          {cfg.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-caption text-mist">{ev.date}</td>
-                      <td className="px-4 py-4 text-caption text-mist">{ev.startTime}–{ev.endTime}</td>
-                      <td className="px-4 py-4 text-caption text-mist">{ev.assignee}</td>
-                      <td className="px-4 py-4 text-caption text-smoke truncate max-w-[180px]">{ev.customerAddress}</td>
-                      <td className="px-4 py-4">
-                        <ChevronRight className="w-4 h-4 text-smoke opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          {filtered.length === 0 ? (
+            <EmptyState
+              title={query ? 'Keine passenden Einsätze' : 'Keine Einsätze vorhanden'}
+              description={query ? 'Passe Suche oder Statusfilter an.' : 'Plane den ersten Termin, damit der Einsatzbereich befüllt wird.'}
+              action={<button className="btn btn-secondary" onClick={createEvent}>Einsatz anlegen</button>}
+              icon={query ? 'search' : 'inbox'}
+            />
           ) : (
-            <div className="p-4 sm:p-6 lg:p-8 space-y-8">
-              {byDate.map(([date, evts]) => (
-                <div key={date} className="animate-in">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-10 h-10 rounded-2xl bg-primary/10 flex items-center justify-center">
-                      <Calendar className="w-5 h-5 text-primary-light" />
-                    </div>
-                    <div>
-                      <h3 className="text-heading text-white">
-                        {new Date(date + 'T00:00:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
-                      </h3>
-                      <p className="text-[15px] text-smoke">{evts.length} Einsätze</p>
-                    </div>
-                  </div>
-                  <div className="ml-5 pl-5 border-l border-white/[0.09] space-y-3">
-                    {evts.map((ev, idx) => {
-                      const cfg = stCfg[ev.status];
-                      const Icon = cfg.icon;
-                      return (
-                        <div
-                          key={ev.id}
-                          onClick={() => setSelectedEv(ev)}
-                          className={cn(
-                            'card p-4 cursor-pointer group relative animate-in'
-                          )}
-                          style={{ animationDelay: `${idx * 40}ms` }}
-                        >
-                          <div className="absolute -left-[25px] top-5 w-3 h-3 rounded-full border-2 border-obsidian z-10" style={{ background: cfg.color }} />
-                          <div className="flex items-start gap-4">
-                            <div 
-                              className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
-                              style={{ background: `${cfg.color}15` }}
-                            >
-                              <Icon className="w-5 h-5" style={{ color: cfg.color }} />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-body font-medium text-white group-hover:text-primary-light transition-colors">
-                                {ev.customerName}
-                              </p>
-                              <p className="text-[15px] text-mist mt-0.5">{ev.title}</p>
-                              <div className="flex items-center gap-4 mt-2">
-                                <span className="flex items-center gap-1.5 text-[15px] text-smoke">
-                                  <Clock className="w-3 h-3" />{ev.startTime}–{ev.endTime}
-                                </span>
-                                <span className="flex items-center gap-1.5 text-[15px] text-smoke">
-                                  <User className="w-3 h-3" />{ev.assignee}
-                                </span>
-                                <span className="flex items-center gap-1.5 text-[15px] text-smoke truncate">
-                                  <MapPin className="w-3 h-3" />{ev.customerAddress.split(',')[0]}
-                                </span>
-                              </div>
-                            </div>
-                            <span 
-                              className="text-[15px] font-semibold px-2.5 py-1 rounded-full shrink-0"
-                              style={{ background: `${cfg.color}15`, color: cfg.color }}
-                            >
-                              {cfg.label}
-                            </span>
+            <div className="overflow-hidden rounded-[28px] border border-white/[0.08] bg-white/[0.03]">
+              <table className="w-full">
+                <thead className="bg-black/15">
+                  <tr className="text-left text-[12px] uppercase tracking-[0.14em] text-smoke">
+                    <th className="px-5 py-4 font-semibold">Kunde</th>
+                    <th className="px-5 py-4 font-semibold">Einsatz</th>
+                    <th className="px-5 py-4 font-semibold">Status</th>
+                    <th className="px-5 py-4 font-semibold">Zeit</th>
+                    <th className="px-5 py-4 font-semibold">Techniker</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((event) => (
+                    <tr
+                      key={event.id}
+                      onClick={() => setSelectedId(event.id)}
+                      className={`cursor-pointer border-t border-white/[0.06] transition-colors hover:bg-white/[0.04] ${selectedId === event.id ? 'bg-white/[0.05]' : ''}`}
+                    >
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/12 font-semibold text-primary-soft">
+                            {getInitials(event.customerName)}
+                          </div>
+                          <div>
+                            <p className="text-[15px] font-medium text-white">{event.customerName}</p>
+                            <p className="text-[13px] text-smoke">{event.customerAddress}</p>
                           </div>
                         </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+                      </td>
+                      <td className="px-5 py-4 text-[14px] text-smoke">{event.title}</td>
+                      <td className="px-5 py-4">
+                        <StatusBadge tone={event.status === 'abgeschlossen' ? 'success' : event.status === 'unterwegs' ? 'warning' : event.status === 'geplant' ? 'info' : 'neutral'}>
+                          {event.status}
+                        </StatusBadge>
+                      </td>
+                      <td className="px-5 py-4 text-[14px] text-smoke">{event.date} · {event.startTime}</td>
+                      <td className="px-5 py-4 text-[14px] text-smoke">{event.assignee}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
-      </div>
+      </section>
 
-      {/* Detail Panel */}
-      {selectedEv && (
-        <div className={cn(
-          'w-full lg:w-[420px] flex flex-col overflow-hidden',
-          'bg-obsidian/95 backdrop-blur-2xl',
-          'border-l border-white/[0.08]',
-          'animate-slide-l'
-        )}>
-          <div className="p-6 border-b border-white/[0.08]">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <h2 className="text-title text-white">{selectedEv.title}</h2>
-                <p className="text-caption text-mist mt-0.5">{selectedEv.customerName}</p>
+      <aside className="bg-[#0d121b]">
+        {!selected ? (
+          <div className="p-6">
+            <EmptyState title="Kein Einsatz ausgewählt" description="Wähle links einen Einsatz, um Status und Notizen zu bearbeiten." />
+          </div>
+        ) : (
+          <div className="flex h-full flex-col">
+            <div className="border-b border-white/[0.08] p-6">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-[22px] font-semibold tracking-[-0.04em] text-white">{selected.title}</h2>
+                  <p className="mt-1 text-[14px] text-smoke">{selected.customerName}</p>
+                </div>
+                <button onClick={() => setSelectedId(null)} className="rounded-2xl border border-white/[0.08] p-2 text-smoke hover:bg-white/[0.05] hover:text-white">
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-              <button onClick={() => setSelectedEv(null)} className="p-2 rounded-2xl hover:bg-white/[0.05] transition-colors">
-                <X className="w-5 h-5 text-smoke" />
-              </button>
+              <div className="mt-4 flex flex-wrap gap-2">
+                {filters.filter((item): item is ServiceStatus => item !== 'all').map((status) => (
+                  <button key={status} onClick={() => updateServiceStatus(selected.id, status)} className={`chip ${selected.status === status ? 'chip-active' : ''}`}>
+                    {status}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            {/* Status Badge */}
-            <span 
-              className="inline-flex items-center gap-2 text-[15px] font-semibold px-3 py-1.5 rounded-lg"
-              style={{ background: `${stCfg[selectedEv.status].color}15`, color: stCfg[selectedEv.status].color }}
-            >
-              {(() => { const I = stCfg[selectedEv.status].icon; return <I className="w-4 h-4" />; })()}
-              {stCfg[selectedEv.status].label}
-            </span>
-          </div>
-
-          <div className="p-6 space-y-5 flex-1 overflow-y-auto">
-            {/* Details */}
-            <div className="space-y-3">
-              {[
-                { icon: Calendar, label: 'Datum', value: new Date(selectedEv.date + 'T00:00:00').toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) },
-                { icon: Clock, label: 'Uhrzeit', value: `${selectedEv.startTime} – ${selectedEv.endTime}` },
-                { icon: User, label: 'Techniker', value: selectedEv.assignee },
-                { icon: MapPin, label: 'Adresse', value: selectedEv.customerAddress },
-                { icon: Phone, label: 'Kunde', value: selectedEv.customerName },
-              ].map(item => (
-                <div key={item.label} className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-2xl bg-white/[0.045] flex items-center justify-center shrink-0">
-                    <item.icon className="w-4 h-4 text-smoke" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[15px] text-smoke uppercase tracking-wider">{item.label}</p>
-                    <p className="text-caption text-cloud">{item.value}</p>
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="space-y-6">
+                <div className="rounded-3xl border border-white/[0.08] bg-white/[0.03] p-4">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-smoke">Rahmendaten</p>
+                  <div className="mt-4 space-y-3 text-[14px] text-smoke">
+                    <div className="flex items-center gap-3"><Calendar className="h-4 w-4" />{selected.date}</div>
+                    <div className="flex items-center gap-3"><Clock className="h-4 w-4" />{selected.startTime} – {selected.endTime}</div>
+                    <div className="flex items-center gap-3"><User className="h-4 w-4" />{selected.assignee}</div>
+                    <div className="flex items-center gap-3"><MapPin className="h-4 w-4" />{selected.customerAddress}</div>
                   </div>
                 </div>
-              ))}
-            </div>
 
-            {/* Actions */}
-            <div className="space-y-2 pt-4 border-t border-white/[0.08]">
-              <button className="w-full btn btn-primary py-3">Status ändern</button>
-              <button className="w-full btn btn-secondary py-3">Notiz hinzufügen</button>
-              <button className="w-full btn btn-secondary py-3">Navigation starten</button>
+                <div className="rounded-3xl border border-white/[0.08] bg-white/[0.03] p-4">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-smoke">Statusaktion</p>
+                  <div className="mt-4 grid gap-2">
+                    <button onClick={() => updateServiceStatus(selected.id)} className="btn btn-primary"><Truck className="h-4 w-4" />Nächsten Status setzen</button>
+                    <button
+                      onClick={() => {
+                        const note = window.prompt('Einsatznotiz');
+                        if (note) addServiceNote(selected.id, note);
+                      }}
+                      className="btn btn-secondary"
+                    >
+                      Notiz ergänzen
+                    </button>
+                  </div>
+                </div>
+
+                <div className="rounded-3xl border border-white/[0.08] bg-white/[0.03] p-4">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-smoke">Einsatznotizen</p>
+                  <div className="mt-4 space-y-3">
+                    {selected.notes.length === 0 ? (
+                      <EmptyState title="Noch keine Notizen" description="Dokumentiere Anfahrt, Rückfragen oder Besonderheiten direkt im Einsatz." />
+                    ) : (
+                      selected.notes.map((note, index) => (
+                        <div key={`${selected.id}-${index}`} className="rounded-2xl border border-white/[0.08] bg-black/15 p-4">
+                          <p className="text-[14px] leading-6 text-mist">{note}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </aside>
     </div>
   );
 }

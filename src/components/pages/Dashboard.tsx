@@ -1,326 +1,215 @@
-import {
-  Users, Wrench, ClipboardList, AlertTriangle,
-  ArrowUpRight, ChevronRight, MapPin, Clock,
-  TrendingUp, Zap,
-} from 'lucide-react';
+import { ArrowRight, CalendarClock, ClipboardList, TriangleAlert, Users } from 'lucide-react';
 import { cn } from '../../utils/cn';
-import { kpi, serviceEvents, customers } from '../../data/store';
-import type { Page } from '../layout/Sidebar';
+import { useAppStore, type Page } from '../../data/app-store';
+import { EmptyState, SectionHeader, StatusBadge } from '../ui/common';
 
-function fmt(n: number) { return n.toLocaleString('de-DE'); }
+function toneForPriority(priority: string) {
+  if (priority === 'dringend') return 'danger';
+  if (priority === 'hoch') return 'warning';
+  if (priority === 'mittel') return 'info';
+  return 'neutral';
+}
 
-export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
-  const todayServices = serviceEvents.filter(s => 
-    s.status === 'geplant' || s.status === 'unterwegs' || s.status === 'vor-ort'
-  ).slice(0, 6);
+export default function Dashboard({ onNav, search }: { onNav: (page: Page) => void; search: string }) {
+  const { kpi, overdueTasks, todayServices, activity, customers, openTasks } = useAppStore();
 
-  const recentCustomers = customers.slice(0, 4);
+  const searchedCustomers = search
+    ? customers.filter((customer) => customer.name.toLowerCase().includes(search.toLowerCase())).slice(0, 4)
+    : customers.filter((customer) => customer.status !== 'archiviert').slice(0, 4);
+
+  const riskCustomers = customers.filter((customer) => customer.status === 'risiko' || customer.priority === 'dringend');
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-8 overflow-y-auto min-h-[calc(100dvh-76px)]">
-      
-      {/* ═══════════════════════════════════════════════════════════
-         WELCOME HERO
-         ═══════════════════════════════════════════════════════════ */}
-      <div className={cn(
-        'relative overflow-hidden rounded-[22px]',
-        'bg-gradient-to-br from-graphite via-carbon to-obsidian',
-        'border border-white/[0.08]',
-        'p-4 sm:p-6 lg:p-8'
-      )}>
-        {/* Background Effects */}
-        <div className="absolute top-0 right-0 w-[500px] h-[300px] bg-primary/5 rounded-full blur-[100px]" />
-        <div className="absolute bottom-0 left-1/4 w-[400px] h-[200px] bg-violet/5 rounded-full blur-[80px]" />
-        <div className="absolute inset-0 bg-gradient-to-t from-obsidian/50 to-transparent" />
-        
-        {/* Content */}
-        <div className="relative z-10 flex items-center justify-between">
-          <div className="space-y-3">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-              <span className="text-micro text-success">System Online</span>
-            </div>
-            <h1 className="text-display text-white">
-              Guten Tag, Lars
-            </h1>
-            <p className="text-body text-mist max-w-md">
-              Sie haben <span className="text-primary-light font-semibold">{kpi.scheduledServices} Einsätze</span> geplant 
-              und <span className="text-warning font-semibold">{kpi.urgentTasks} dringende Aufgaben</span> für heute.
-            </p>
-            
-            {/* Quick Stats */}
-            <div className="flex items-center gap-6 pt-4">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <TrendingUp className="w-4 h-4 text-primary-light" />
-                </div>
-                <div>
-                  <p className="text-[20px] font-bold text-white">{kpi.completedServices}</p>
-                  <p className="text-[15px] text-smoke uppercase tracking-wider">Erledigt</p>
-                </div>
-              </div>
-              <div className="w-px h-10 bg-white/[0.06]" />
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-success/10 flex items-center justify-center">
-                  <Users className="w-4 h-4 text-success" />
-                </div>
-                <div>
-                  <p className="text-[20px] font-bold text-white">{kpi.activeCustomers}</p>
-                  <p className="text-[15px] text-smoke uppercase tracking-wider">Aktive Kunden</p>
-                </div>
-              </div>
-            </div>
-          </div>
+    <div className="space-y-8 p-4 sm:p-6 lg:p-8">
+      <section className="grid gap-5 xl:grid-cols-[1.35fr_.95fr]">
+        <div className="rounded-[28px] border border-white/[0.08] bg-[#111722] p-6">
+          <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-smoke">Tageslage</p>
+          <div className="mt-4 grid gap-6 lg:grid-cols-[1.2fr_.8fr]">
+            <div>
+              <h2 className="max-w-xl text-[32px] font-semibold tracking-[-0.05em] text-white">
+                Heute zählen Reaktionszeit, saubere Übergaben und klare Rückmeldungen.
+              </h2>
+              <p className="mt-3 max-w-xl text-[15px] leading-7 text-smoke">
+                Das CRM priorisiert nicht hübsche KPIs, sondern die Fälle, die heute Auswirkungen auf Servicequalität und Kundenbindung haben.
+              </p>
 
-          {/* Right Side - Time */}
-          <div className="hidden xl:block text-right">
-            <p className="text-[48px] font-bold text-white/10 tracking-tight">
-              {new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
-            </p>
-            <p className="text-caption text-smoke -mt-2">
-              {new Date().toLocaleDateString('de-DE', { weekday: 'long', day: 'numeric', month: 'long' })}
-            </p>
+              <div className="mt-6 flex flex-wrap gap-3">
+                <button className="btn btn-primary" onClick={() => onNav('einsaetze')}>
+                  Einsatzsteuerung öffnen
+                </button>
+                <button className="btn btn-secondary" onClick={() => onNav('aufgaben')}>
+                  Aufgaben prüfen
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="rounded-3xl bg-black/20 p-4">
+                <p className="text-[13px] text-smoke">Überfällige Aufgaben</p>
+                <p className="mt-2 text-[30px] font-semibold text-white">{overdueTasks.length}</p>
+                <p className="text-[13px] text-smoke">müssen heute geklärt werden</p>
+              </div>
+              <div className="rounded-3xl bg-black/20 p-4">
+                <p className="text-[13px] text-smoke">Risikokunden</p>
+                <p className="mt-2 text-[30px] font-semibold text-white">{kpi.riskCustomers}</p>
+                <p className="text-[13px] text-smoke">mit offener Eskalation oder Beschwerde</p>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* ═══════════════════════════════════════════════════════════
-         KPI CARDS
-         ═══════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-        {[
-          { 
-            label: 'Aktive Kunden', 
-            value: fmt(kpi.activeCustomers), 
-            sub: `von ${kpi.totalCustomers} gesamt`, 
-            icon: Users, 
-            color: '#6366f1',
-            trend: '+12%'
-          },
-          { 
-            label: 'Geplante Einsätze', 
-            value: fmt(kpi.scheduledServices), 
-            sub: 'diese Woche', 
-            icon: Wrench, 
-            color: '#06b6d4',
-            trend: '+8%'
-          },
-          { 
-            label: 'Offene Aufgaben', 
-            value: fmt(kpi.openTasks), 
-            sub: `${kpi.completedTasks} erledigt`, 
-            icon: ClipboardList, 
-            color: '#10b981',
-            trend: '-3%'
-          },
-          { 
-            label: 'Dringend', 
-            value: fmt(kpi.urgentTasks), 
-            sub: 'sofort bearbeiten', 
-            icon: AlertTriangle, 
-            color: '#ef4444',
-            trend: null
-          },
-        ].map((k, idx) => (
-          <div 
-            key={k.label} 
-            className="card p-5 group cursor-pointer animate-in"
-            style={{ animationDelay: `${idx * 50}ms` }}
-          >
-            <div className="flex items-start justify-between mb-4">
-              <div 
-                className={cn(
-                  'w-11 h-11 rounded-2xl flex items-center justify-center',
-                  'transition-transform duration-300 group-hover:scale-110'
-                )}
-                style={{ background: `${k.color}12` }}
-              >
-                <k.icon className="w-5 h-5" style={{ color: k.color }} />
-              </div>
-              {k.trend && (
-                <span className={cn(
-                  'text-[15px] font-semibold px-2 py-1 rounded-full',
-                  k.trend.startsWith('+') 
-                    ? 'bg-success/10 text-success' 
-                    : 'bg-danger/10 text-danger'
-                )}>
-                  {k.trend}
-                </span>
-              )}
-            </div>
-            
-            <p className="text-[28px] font-bold text-white tracking-tight">{k.value}</p>
-            <p className="text-caption text-smoke mt-1">{k.sub}</p>
-            
-            {/* Progress Bar */}
-            <div className="mt-4 h-1 bg-white/[0.055] rounded-full overflow-hidden">
-              <div 
-                className="h-full rounded-full transition-all duration-1000 ease-out"
-                style={{ 
-                  width: `${Math.min(85, 30 + Math.random() * 55)}%`,
-                  background: `linear-gradient(90deg, ${k.color}, ${k.color}88)`
-                }}
+        <div className="rounded-[28px] border border-white/[0.08] bg-white/[0.03] p-6">
+          <SectionHeader title="Heute im Feld" description="Live-relevante Einsätze statt dekorativer Übersicht." />
+          <div className="mt-5 space-y-3">
+            {todayServices.length === 0 ? (
+              <EmptyState
+                title="Heute keine Termine"
+                description="Es ist aktuell kein Einsatz für den heutigen Tag geplant."
+                action={<button className="btn btn-secondary" onClick={() => onNav('kalender')}>Kalender öffnen</button>}
               />
+            ) : (
+              todayServices.map((event) => (
+                <button
+                  key={event.id}
+                  onClick={() => onNav('einsaetze')}
+                  className="flex w-full items-start gap-3 rounded-2xl border border-white/[0.08] bg-black/15 p-4 text-left transition-colors hover:bg-white/[0.05]"
+                >
+                  <div className="rounded-2xl bg-white/[0.06] px-3 py-2 text-center">
+                    <p className="text-[12px] text-smoke">{event.startTime}</p>
+                    <p className="text-[12px] text-smoke">{event.endTime}</p>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[15px] font-medium text-white">{event.customerName}</p>
+                    <p className="mt-1 text-[14px] text-smoke">{event.title}</p>
+                    <p className="mt-1 text-[13px] text-ash">{event.assignee}</p>
+                  </div>
+                  <StatusBadge tone={event.status === 'unterwegs' ? 'warning' : event.status === 'geplant' ? 'info' : 'success'}>
+                    {event.status}
+                  </StatusBadge>
+                </button>
+              ))
+            )}
+          </div>
+        </div>
+      </section>
+
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+        {[
+          { label: 'Aktive Kunden', value: kpi.activeCustomers, icon: Users, caption: 'laufende Betreuung' },
+          { label: 'Offene Aufgaben', value: kpi.openTasks, icon: ClipboardList, caption: 'ohne erledigte Punkte' },
+          { label: 'Dringend', value: kpi.urgentTasks, icon: TriangleAlert, caption: 'mit hoher Priorität' },
+          { label: 'Heute geplant', value: kpi.todayServices, icon: CalendarClock, caption: 'offene Einsätze' },
+        ].map((item) => (
+          <div key={item.label} className="rounded-[24px] border border-white/[0.08] bg-white/[0.03] p-5">
+            <div className="flex items-center justify-between">
+              <item.icon className="h-5 w-5 text-primary-light" />
+              <span className="text-[12px] text-smoke">{item.caption}</span>
             </div>
+            <p className="mt-5 text-[30px] font-semibold tracking-[-0.04em] text-white">{item.value}</p>
+            <p className="text-[14px] text-smoke">{item.label}</p>
           </div>
         ))}
-      </div>
+      </section>
 
-      {/* ═══════════════════════════════════════════════════════════
-         MAIN GRID
-         ═══════════════════════════════════════════════════════════ */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-6">
-        
-        {/* ─── Heutige Einsätze (3 cols) ─── */}
-        <div className="lg:col-span-3 card p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-2xl bg-info/10 flex items-center justify-center">
-                <Wrench className="w-4 h-4 text-info" />
-              </div>
-              <div>
-                <h2 className="text-heading text-white">Heutige Einsätze</h2>
-                <p className="text-[15px] text-smoke">{todayServices.length} anstehend</p>
-              </div>
-            </div>
-            <button 
-              onClick={() => onNav('einsaetze')}
-              className="flex items-center gap-1 text-caption text-primary-light hover:text-white transition-colors group"
-            >
-              Alle anzeigen
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-            </button>
-          </div>
-
-          <div className="space-y-2">
-            {todayServices.length === 0 && (
-              <div className="py-12 text-center">
-                <div className="w-12 h-12 rounded-[22px] bg-white/[0.045] flex items-center justify-center mx-auto mb-3">
-                  <Zap className="w-6 h-6 text-smoke" />
-                </div>
-                <p className="text-body text-smoke">Keine Einsätze für heute</p>
-              </div>
-            )}
-            {todayServices.map((ev, idx) => {
-              const statusColors: Record<string, { bg: string; text: string; dot: string }> = {
-                geplant: { bg: 'bg-info/8', text: 'text-info', dot: 'bg-info' },
-                unterwegs: { bg: 'bg-warning/8', text: 'text-warning', dot: 'bg-warning' },
-                'vor-ort': { bg: 'bg-violet/8', text: 'text-violet', dot: 'bg-violet' },
-                abgeschlossen: { bg: 'bg-success/8', text: 'text-success', dot: 'bg-success' },
-                abgesagt: { bg: 'bg-smoke/8', text: 'text-smoke', dot: 'bg-smoke' },
-              };
-              const st = statusColors[ev.status] || statusColors.geplant;
-              
-              return (
-                <div 
-                  key={ev.id}
-                  className={cn(
-                    'flex items-center gap-4 p-4 rounded-2xl',
-                    'bg-white/[0.01] border border-white/[0.08]',
-                    'hover:bg-white/[0.045] hover:border-white/[0.09]',
-                    'transition-all duration-200 cursor-pointer group',
-                    'animate-in'
-                  )}
-                  style={{ animationDelay: `${idx * 40}ms` }}
+      <section className="grid gap-6 xl:grid-cols-[1.1fr_.9fr]">
+        <div className="rounded-[28px] border border-white/[0.08] bg-white/[0.03] p-6">
+          <SectionHeader
+            title={search ? `Treffer für „${search}“` : 'Kunden mit Kontext'}
+            description={search ? 'Direkter Zugriff auf passende Kunden.' : 'Keine glatte Galerie, sondern echte Arbeitsfälle mit Status.'}
+            action={<button className="btn btn-secondary" onClick={() => onNav('kunden')}>Zur Kundenliste</button>}
+          />
+          <div className="mt-5 space-y-3">
+            {searchedCustomers.length === 0 ? (
+              <EmptyState
+                title="Keine passenden Kunden"
+                description="Für deine Suche wurde kein Kunde gefunden."
+                icon="search"
+              />
+            ) : (
+              searchedCustomers.map((customer) => (
+                <button
+                  key={customer.id}
+                  onClick={() => onNav('kunden')}
+                  className="flex w-full items-start gap-4 rounded-2xl border border-white/[0.08] bg-black/15 p-4 text-left transition-colors hover:bg-white/[0.05]"
                 >
-                  {/* Time */}
-                  <div className="w-14 shrink-0">
-                    <p className="text-[15px] font-semibold text-white">{ev.startTime}</p>
-                    <p className="text-[15px] text-smoke">{ev.endTime}</p>
+                  <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/12 font-semibold text-primary-soft">
+                    {customer.name.slice(0, 2).toUpperCase()}
                   </div>
-                  
-                  {/* Divider */}
-                  <div className="w-px h-10 bg-white/[0.07]" />
-                  
-                  {/* Content */}
-                  <div className="flex-1 min-w-0">
-                    <p className="text-body font-medium text-white truncate group-hover:text-primary-light transition-colors">
-                      {ev.customerName}
-                    </p>
-                    <div className="flex items-center gap-3 mt-1">
-                      <span className="flex items-center gap-1.5 text-[15px] text-smoke">
-                        <MapPin className="w-3 h-3" />
-                        {ev.customerAddress.split(',')[0]}
-                      </span>
-                      <span className="flex items-center gap-1.5 text-[15px] text-smoke">
-                        <Clock className="w-3 h-3" />
-                        {ev.title}
-                      </span>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <p className="text-[15px] font-medium text-white">{customer.name}</p>
+                      <StatusBadge tone={customer.status === 'risiko' ? 'danger' : customer.status === 'wartet' ? 'warning' : customer.status === 'archiviert' ? 'neutral' : 'success'}>
+                        {customer.status}
+                      </StatusBadge>
                     </div>
+                    <p className="mt-1 text-[14px] text-smoke">{customer.city} · letzter Einsatz {customer.lastService}</p>
+                    {customer.notes[0] ? <p className="mt-2 line-clamp-2 text-[13px] text-ash">{customer.notes[0].content}</p> : null}
                   </div>
-
-                  {/* Status */}
-                  <div className={cn(
-                    'flex items-center gap-1.5 px-2.5 py-1 rounded-full shrink-0',
-                    st.bg
-                  )}>
-                    <div className={cn('w-1.5 h-1.5 rounded-full', st.dot)} />
-                    <span className={cn('text-[15px] font-semibold uppercase tracking-wide', st.text)}>
-                      {ev.status}
-                    </span>
-                  </div>
-
-                  {/* Arrow */}
-                  <ArrowUpRight className="w-4 h-4 text-smoke opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
-                </div>
-              );
-            })}
+                  <ArrowRight className="mt-1 h-4 w-4 text-smoke" />
+                </button>
+              ))
+            )}
           </div>
         </div>
 
-        {/* ─── Recent Customers (2 cols) ─── */}
-        <div className="lg:col-span-2 card p-6">
-          <div className="flex items-center justify-between mb-5">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-2xl bg-primary/10 flex items-center justify-center">
-                <Users className="w-4 h-4 text-primary-light" />
-              </div>
-              <div>
-                <h2 className="text-heading text-white">Aktuelle Kunden</h2>
-                <p className="text-[15px] text-smoke">Zuletzt bearbeitet</p>
-              </div>
+        <div className="grid gap-6">
+          <div className="rounded-[28px] border border-white/[0.08] bg-white/[0.03] p-6">
+            <SectionHeader title="Akut zu klären" description="Was heute Wirkung auf SLA, Beschwerden oder Umsatzverlust hat." />
+            <div className="mt-5 space-y-3">
+              {openTasks.filter((task) => task.priority === 'dringend' || task.dueDate <= '2026-06-23').slice(0, 4).map((task) => (
+                <div key={task.id} className="rounded-2xl border border-white/[0.08] bg-black/15 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[15px] font-medium text-white">{task.title}</p>
+                    <StatusBadge tone={toneForPriority(task.priority) as any}>{task.priority}</StatusBadge>
+                  </div>
+                  <p className="mt-1 text-[14px] text-smoke">{task.customerName}</p>
+                  <p className="mt-2 text-[13px] text-ash">{task.description}</p>
+                </div>
+              ))}
+              {openTasks.length === 0 ? (
+                <EmptyState title="Keine offenen Aufgaben" description="Das Team hat aktuell keine offenen Punkte mehr." />
+              ) : null}
             </div>
-            <button 
-              onClick={() => onNav('kunden')}
-              className="flex items-center gap-1 text-caption text-primary-light hover:text-white transition-colors group"
-            >
-              Alle
-              <ChevronRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
-            </button>
           </div>
 
-          <div className="space-y-3">
-            {recentCustomers.map((c, idx) => (
-              <div 
-                key={c.id}
-                className={cn(
-                  'flex items-center gap-3 p-3 rounded-2xl',
-                  'hover:bg-white/[0.045] transition-all duration-200 cursor-pointer group',
-                  'animate-in'
-                )}
-                style={{ animationDelay: `${idx * 40}ms` }}
-              >
-                <div 
-                  className="w-10 h-10 rounded-2xl flex items-center justify-center text-[15px] font-bold text-white shrink-0"
-                  style={{ background: `linear-gradient(135deg, ${c.avatar}, ${c.avatar}99)` }}
-                >
-                  {c.name.split(' ').map(w => w[0]).join('').slice(0, 2)}
+          <div className="rounded-[28px] border border-white/[0.08] bg-white/[0.03] p-6">
+            <SectionHeader title="Aktivität" description="Letzte Änderungen im System – ohne Fake-Metriken." />
+            <div className="mt-5 space-y-3">
+              {activity.slice(0, 6).map((item) => (
+                <div key={item.id} className="rounded-2xl border border-white/[0.08] bg-black/15 p-4">
+                  <div className="flex items-center justify-between gap-3">
+                    <p className="text-[14px] font-medium text-white">{item.title}</p>
+                    <span className="text-[12px] text-ash">{item.timestamp}</span>
+                  </div>
+                  <p className="mt-1 text-[13px] text-smoke">{item.customerName}</p>
+                  <p className="mt-2 text-[13px] text-ash">{item.detail}</p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-body font-medium text-white truncate group-hover:text-primary-light transition-colors">
-                    {c.name}
-                  </p>
-                  <p className="text-[15px] text-smoke truncate">{c.city} · {c.contacts[0]?.name}</p>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {riskCustomers.length > 0 ? (
+        <section className="rounded-[28px] border border-danger/20 bg-danger/6 p-6">
+          <SectionHeader
+            title="Kunden mit erhöhtem Risiko"
+            description="Diese Fälle brauchen klare Rückmeldung, sonst kippt der Eindruck schnell."
+            action={<button className="btn btn-secondary" onClick={() => onNav('kunden')}>Fälle öffnen</button>}
+          />
+          <div className="mt-5 grid gap-3 md:grid-cols-2">
+            {riskCustomers.map((customer) => (
+              <div key={customer.id} className="rounded-2xl border border-danger/20 bg-black/10 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-[15px] font-medium text-white">{customer.name}</p>
+                  <StatusBadge tone="danger">Aufmerksamkeit</StatusBadge>
                 </div>
-                <div className="text-right shrink-0">
-                  <p className="text-caption font-semibold text-white">{c.serviceCount}</p>
-                  <p className="text-[15px] text-smoke">Einsätze</p>
-                </div>
+                <p className="mt-2 text-[14px] text-smoke">{customer.notes[0]?.content || 'Noch keine Notiz vorhanden.'}</p>
               </div>
             ))}
           </div>
-        </div>
-      </div>
+        </section>
+      ) : null}
     </div>
   );
 }
