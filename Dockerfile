@@ -8,7 +8,7 @@ ENV NPM_CONFIG_REGISTRY=https://registry.npmjs.org/
 ENV NODE_TLS_REJECT_UNAUTHORIZED=0
 
 COPY package.json package-lock.json ./
-RUN npm install --ignore-scripts --no-audit --no-fund --loglevel=warn
+RUN npm install -g npm@11.17.0 && npm install --ignore-scripts --no-audit --no-fund --loglevel=warn
 
 COPY . .
 RUN npm run build
