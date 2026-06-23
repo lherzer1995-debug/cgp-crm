@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import Sidebar, { type Page } from './components/layout/Sidebar';
 import Header from './components/layout/Header';
 import Dashboard from './components/pages/Dashboard';
@@ -11,10 +11,33 @@ import Einstellungen from './components/pages/Einstellungen';
 export default function App() {
   const [page, setPage] = useState<Page>('dashboard');
   const [collapsed, setCollapsed] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [search, setSearch] = useState('');
+  const [isMobile, setIsMobile] = useState(false);
 
-  const nav = useCallback((p: Page) => setPage(p), []);
-  const toggle = useCallback(() => setCollapsed(c => !c), []);
+  useEffect(() => {
+    const check = () => {
+      const mobile = window.matchMedia('(max-width: 900px)').matches;
+      setIsMobile(mobile);
+      if (mobile) setCollapsed(false);
+    };
+
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+
+  const nav = useCallback((p: Page) => {
+    setPage(p);
+    setMobileMenuOpen(false);
+  }, []);
+
+  const toggleSidebar = useCallback(() => {
+    if (isMobile) setMobileMenuOpen(open => !open);
+    else setCollapsed(c => !c);
+  }, [isMobile]);
+
+  const sidebarWidth = isMobile ? 0 : collapsed ? 84 : 284;
 
   const renderPage = () => {
     switch (page) {
@@ -29,24 +52,39 @@ export default function App() {
   };
 
   return (
-    <div className="flex h-screen bg-void overflow-hidden noise">
-      {/* Sidebar */}
-      <Sidebar current={page} onNav={nav} collapsed={collapsed} onToggle={toggle} />
-      
-      {/* Main Content */}
-      <div 
-        className="flex-1 flex flex-col transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]"
-        style={{ marginLeft: collapsed ? 72 : 260 }}
+    <div className="app-shell bg-void">
+      <Sidebar
+        current={page}
+        onNav={nav}
+        collapsed={!isMobile && collapsed}
+        onToggle={toggleSidebar}
+        mobileOpen={mobileMenuOpen}
+        isMobile={isMobile}
+      />
+
+      {isMobile && mobileMenuOpen && (
+        <button
+          aria-label="Navigation schließen"
+          className="fixed inset-0 z-40 bg-black/60 backdrop-blur-sm"
+          onClick={() => setMobileMenuOpen(false)}
+        />
+      )}
+
+      <div
+        className="app-main transition-[margin] duration-300 ease-[cubic-bezier(.16,1,.3,1)]"
+        style={{ marginLeft: sidebarWidth }}
       >
-        <Header page={page} search={search} onSearch={setSearch} />
-        <main className="flex-1 overflow-hidden">
+        <Header
+          page={page}
+          search={search}
+          onSearch={setSearch}
+          onMenuClick={toggleSidebar}
+          isMobile={isMobile}
+        />
+        <main className="app-content">
           {renderPage()}
         </main>
       </div>
-
-      {/* Ambient Effects */}
-      <div className="fixed top-0 right-0 w-[600px] h-[600px] bg-primary/[0.02] rounded-full blur-[150px] pointer-events-none" />
-      <div className="fixed bottom-0 left-1/3 w-[500px] h-[400px] bg-violet/[0.015] rounded-full blur-[120px] pointer-events-none" />
     </div>
   );
 }

@@ -58,9 +58,11 @@ export default function Aufgaben() {
   const pct = tasks.length ? Math.round(done / tasks.length * 100) : 0;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)]">
-      <div className="px-8 py-4 flex items-center justify-between border-b border-white/[0.02]">
+    <div className="flex flex-col min-h-[calc(100dvh-76px)]">
+      {/* Toolbar */}
+      <div className="px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between border-b border-white/[0.08]">
         <div className="flex items-center gap-3">
+          {/* Search */}
           <div className="relative group">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-smoke group-focus-within:text-mist transition-colors" />
             <input
@@ -70,24 +72,25 @@ export default function Aufgaben() {
               onChange={e => setSearch(e.target.value)}
               className={cn(
                 'w-[280px] pl-11 pr-4 py-2.5',
-                'bg-white/[0.02] border border-white/[0.04] rounded-xl',
-                'text-[13px] text-cloud placeholder-smoke',
-                'hover:bg-white/[0.03] hover:border-white/[0.06]',
-                'focus:outline-none focus:bg-white/[0.04] focus:border-primary/30',
+                'bg-white/[0.045] border border-white/[0.09] rounded-2xl',
+                'text-[15px] text-cloud placeholder-smoke',
+                'hover:bg-white/[0.055] hover:border-white/[0.06]',
+                'focus:outline-none focus:bg-white/[0.07] focus:border-primary/30',
                 'transition-all duration-200'
               )}
             />
           </div>
           
+          {/* Priority Filter */}
           <select
             value={priFilter}
             onChange={e => setPriFilter(e.target.value)}
             className={cn(
-              'px-4 py-2.5 rounded-xl',
-              'bg-white/[0.02] border border-white/[0.04]',
-              'text-[13px] text-mist',
+              'px-4 py-2.5 rounded-2xl',
+              'bg-white/[0.045] border border-white/[0.09]',
+              'text-[15px] text-mist',
               'focus:outline-none appearance-none cursor-pointer',
-              'hover:bg-white/[0.03]'
+              'hover:bg-white/[0.055]'
             )}
           >
             <option value="all">Alle Prioritäten</option>
@@ -99,12 +102,13 @@ export default function Aufgaben() {
         </div>
 
         <div className="flex items-center gap-5">
+          {/* Progress */}
           <div className="flex items-center gap-3">
             <div className="text-right">
-              <p className="text-[10px] text-smoke uppercase tracking-wider">Fortschritt</p>
+              <p className="text-[15px] text-smoke uppercase tracking-wider">Fortschritt</p>
               <p className="text-caption font-semibold text-white">{done}/{tasks.length}</p>
             </div>
-            <div className="w-32 h-1.5 bg-white/[0.03] rounded-full overflow-hidden">
+            <div className="w-32 h-1.5 bg-white/[0.055] rounded-full overflow-hidden">
               <div 
                 className="h-full bg-gradient-to-r from-success to-success-soft rounded-full transition-all duration-700"
                 style={{ width: `${pct}%` }}
@@ -113,10 +117,11 @@ export default function Aufgaben() {
             <span className="text-caption font-bold text-success">{pct}%</span>
           </div>
 
+          {/* Add Task */}
           <button className={cn(
             'flex items-center gap-2 px-4 py-2.5',
             'bg-gradient-to-r from-primary to-[#5558e3]',
-            'rounded-xl text-[13px] font-medium text-white',
+            'rounded-2xl text-[15px] font-medium text-white',
             'shadow-lg shadow-primary/20',
             'hover:shadow-xl hover:shadow-primary/30',
             'hover:-translate-y-0.5 active:translate-y-0',
@@ -128,6 +133,7 @@ export default function Aufgaben() {
         </div>
       </div>
 
+      {/* Kanban Board */}
       <div className="flex-1 overflow-x-auto p-6">
         <div className="flex gap-5 h-full min-w-max">
           {statusOrder.map(status => {
@@ -137,6 +143,7 @@ export default function Aufgaben() {
             
             return (
               <div key={status} className="w-[340px] flex flex-col shrink-0">
+                {/* Column Header */}
                 <div className="flex items-center justify-between px-4 py-3 mb-3">
                   <div className="flex items-center gap-2.5">
                     <div 
@@ -147,8 +154,8 @@ export default function Aufgaben() {
                     </div>
                     <span className="text-heading text-white">{cfg.label}</span>
                     <span className={cn(
-                      'text-[10px] font-semibold px-2 py-0.5 rounded-full',
-                      'bg-white/[0.04] text-smoke'
+                      'text-[15px] font-semibold px-2 py-0.5 rounded-full',
+                      'bg-white/[0.07] text-smoke'
                     )}>
                       {list.length}
                     </span>
@@ -158,6 +165,7 @@ export default function Aufgaben() {
                   </button>
                 </div>
 
+                {/* Cards */}
                 <div className="flex-1 space-y-2.5 overflow-y-auto">
                   {list.map((task, idx) => {
                     const pi = priCfg[task.priority];
@@ -165,7 +173,9 @@ export default function Aufgaben() {
                     return (
                       <div
                         key={task.id}
-                        className={cn('card p-4 group cursor-pointer animate-in')}
+                        className={cn(
+                          'card p-4 group cursor-pointer animate-in'
+                        )}
                         style={{ animationDelay: `${idx * 30}ms` }}
                       >
                         <div className="flex items-start gap-3">
@@ -188,18 +198,18 @@ export default function Aufgaben() {
                             )}>
                               {task.title}
                             </p>
-                            <p className="text-[11px] text-smoke mt-1 truncate">{task.customerName}</p>
+                            <p className="text-[15px] text-smoke mt-1 truncate">{task.customerName}</p>
                             <div className="flex items-center gap-3 mt-3">
                               <span 
-                                className="flex items-center gap-1 text-[10px] font-semibold capitalize"
+                                className="flex items-center gap-1 text-[15px] font-semibold capitalize"
                                 style={{ color: pi.color }}
                               >
                                 <PIcon className="w-3 h-3" />{pi.label}
                               </span>
-                              <span className="flex items-center gap-1 text-[10px] text-smoke">
+                              <span className="flex items-center gap-1 text-[15px] text-smoke">
                                 <Calendar className="w-3 h-3" />{task.dueDate}
                               </span>
-                              <span className="flex items-center gap-1 text-[10px] text-smoke">
+                              <span className="flex items-center gap-1 text-[15px] text-smoke">
                                 <User className="w-3 h-3" />{task.assignee.split(' ')[0]}
                               </span>
                             </div>

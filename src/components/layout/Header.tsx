@@ -1,107 +1,111 @@
-import { Bell, Search, Plus, Sparkles } from 'lucide-react';
+import { Bell, Menu, Plus, Search, Sparkles } from 'lucide-react';
 import { cn } from '../../utils/cn';
 import type { Page } from './Sidebar';
 
-const titles: Record<Page, { t: string; s: string }> = {
-  dashboard: { t: 'Dashboard', s: 'Willkommen zurück' },
-  kunden: { t: 'Kunden', s: 'Bestandskunden verwalten' },
-  aufgaben: { t: 'Aufgaben', s: 'Offene Aufgaben im Überblick' },
-  einsaetze: { t: 'Einsätze', s: 'Service-Einsätze planen' },
-  kalender: { t: 'Kalender', s: 'Termine & Planung' },
-  einstellungen: { t: 'Einstellungen', s: 'System konfigurieren' },
+const titles: Record<Page, { title: string; subtitle: string; eyebrow: string }> = {
+  dashboard: { title: 'Dashboard', subtitle: 'Service, Kunden und Aufgaben in einem klaren Überblick.', eyebrow: 'Heute' },
+  kunden: { title: 'Kunden', subtitle: 'Kontakte, Historie und Servicebedarf sauber priorisieren.', eyebrow: 'CRM' },
+  aufgaben: { title: 'Aufgaben', subtitle: 'Fokus auf offene To-dos, Dringlichkeit und Verantwortliche.', eyebrow: 'Operations' },
+  einsaetze: { title: 'Einsätze', subtitle: 'Service-Termine planen, verfolgen und abschließen.', eyebrow: 'Service' },
+  kalender: { title: 'Kalender', subtitle: 'Kapazitäten, Termine und Vor-Ort-Einsätze koordinieren.', eyebrow: 'Planung' },
+  einstellungen: { title: 'Einstellungen', subtitle: 'Profil, Sicherheit, Darstellung und Integrationen.', eyebrow: 'System' },
 };
 
 interface Props {
   page: Page;
   search: string;
-  onSearch: (v: string) => void;
-  onAdd?: () => void;
+  onSearch: (value: string) => void;
+  onMenuClick: () => void;
+  isMobile: boolean;
 }
 
-export default function Header({ page, search, onSearch }: Props) {
-  const { t, s } = titles[page];
-  
+export default function Header({ page, search, onSearch, onMenuClick, isMobile }: Props) {
+  const meta = titles[page];
+
   return (
     <header className={cn(
-      'h-[64px] flex items-center justify-between px-8',
-      'bg-void/80 backdrop-blur-2xl',
-      'border-b border-white/[0.02]',
-      'sticky top-0 z-40'
+      'sticky top-0 z-30',
+      'min-h-[76px] border-b border-white/[0.07]',
+      'bg-void/72 backdrop-blur-2xl'
     )}>
-      {/* Left: Title */}
-      <div className="animate-in">
-        <h1 className="text-[17px] font-semibold text-white tracking-tight">{t}</h1>
-        <p className="text-[11px] text-smoke -mt-0.5">{s}</p>
-      </div>
-
-      {/* Right: Actions */}
-      <div className="flex items-center gap-3">
-        {/* Search */}
-        <div className="relative group">
-          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-smoke group-focus-within:text-mist transition-colors" />
-          <input
-            type="text"
-            placeholder="Suchen…"
-            value={search}
-            onChange={e => onSearch(e.target.value)}
+      <div className="flex min-h-[76px] items-center justify-between gap-4 px-4 sm:px-6 lg:px-8">
+        <div className="flex min-w-0 items-center gap-3">
+          <button
+            type="button"
+            onClick={onMenuClick}
             className={cn(
-              'w-[220px] pl-10 pr-4 py-2.5',
-              'bg-white/[0.02] border border-white/[0.04] rounded-xl',
-              'text-[13px] text-cloud placeholder-smoke',
-              'hover:bg-white/[0.03] hover:border-white/[0.06]',
-              'focus:outline-none focus:bg-white/[0.04] focus:border-primary/30',
-              'focus:ring-2 focus:ring-primary/10',
+              'inline-flex h-11 w-11 items-center justify-center rounded-2xl',
+              'border border-white/[0.09] bg-white/[0.055] text-mist',
+              'hover:bg-white/[0.085] hover:text-white',
               'transition-all duration-200'
             )}
-          />
+            aria-label={isMobile ? 'Navigation öffnen' : 'Sidebar ein- oder ausklappen'}
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+
+          <div className="min-w-0">
+            <div className="hidden sm:flex items-center gap-2 text-[12px] font-bold uppercase tracking-[0.14em] text-primary-soft">
+              <Sparkles className="h-3.5 w-3.5" />
+              {meta.eyebrow}
+            </div>
+            <h1 className="truncate text-[21px] sm:text-[24px] font-extrabold tracking-[-0.035em] text-white">
+              {meta.title}
+            </h1>
+            <p className="hidden md:block truncate text-[14px] text-smoke">
+              {meta.subtitle}
+            </p>
+          </div>
         </div>
 
-        {/* AI Assistant */}
-        <button className={cn(
-          'flex items-center gap-2 px-4 py-2.5',
-          'bg-gradient-to-r from-primary/10 to-violet/10',
-          'border border-primary/20 rounded-xl',
-          'text-[12px] font-medium text-primary-light',
-          'hover:from-primary/15 hover:to-violet/15',
-          'hover:border-primary/30',
-          'transition-all duration-200 group'
-        )}>
-          <Sparkles className="w-4 h-4 group-hover:animate-pulse" />
-          <span className="hidden lg:inline">AI Assistent</span>
-        </button>
+        <div className="flex shrink-0 items-center gap-2 sm:gap-3">
+          <div className="relative hidden lg:block">
+            <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-ash" />
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => onSearch(event.target.value)}
+              placeholder="Kunden, Aufgaben, Einsätze suchen…"
+              className={cn(
+                'h-11 w-[320px] rounded-2xl border border-white/[0.09]',
+                'bg-white/[0.055] pl-11 pr-4 text-[14px] text-cloud placeholder:text-ash',
+                'transition-all duration-200',
+                'hover:border-white/[0.14] hover:bg-white/[0.075]',
+                'focus:border-primary/50 focus:bg-white/[0.08] focus:outline-none focus:ring-4 focus:ring-primary/15'
+              )}
+            />
+          </div>
 
-        {/* Notifications */}
-        <button className={cn(
-          'relative p-2.5 rounded-xl',
-          'bg-white/[0.02] border border-white/[0.04]',
-          'text-smoke hover:text-white',
-          'hover:bg-white/[0.04] hover:border-white/[0.06]',
-          'transition-all duration-200'
-        )}>
-          <Bell className="w-[18px] h-[18px]" />
-          <span className={cn(
-            'absolute -top-0.5 -right-0.5',
-            'w-4 h-4 flex items-center justify-center',
-            'bg-danger rounded-full',
-            'text-[9px] font-bold text-white',
-            'ring-2 ring-void'
-          )}>2</span>
-        </button>
+          <button
+            type="button"
+            className={cn(
+              'hidden md:inline-flex h-11 items-center gap-2 rounded-2xl px-4',
+              'border border-primary/25 bg-primary/12 text-[14px] font-bold text-primary-soft',
+              'hover:border-primary/40 hover:bg-primary/18 transition-all duration-200'
+            )}
+          >
+            <Sparkles className="h-4 w-4" />
+            Assistent
+          </button>
 
-        {/* Add New */}
-        <button className={cn(
-          'flex items-center gap-2 px-4 py-2.5',
-          'bg-gradient-to-r from-primary to-[#5558e3]',
-          'rounded-xl text-[13px] font-medium text-white',
-          'shadow-lg shadow-primary/20',
-          'hover:shadow-xl hover:shadow-primary/30',
-          'hover:-translate-y-0.5',
-          'active:translate-y-0',
-          'transition-all duration-200'
-        )}>
-          <Plus className="w-4 h-4" />
-          <span>Neu</span>
-        </button>
+          <button
+            type="button"
+            className={cn(
+              'relative inline-flex h-11 w-11 items-center justify-center rounded-2xl',
+              'border border-white/[0.09] bg-white/[0.055] text-mist',
+              'hover:bg-white/[0.085] hover:text-white transition-all duration-200'
+            )}
+            aria-label="Benachrichtigungen"
+          >
+            <Bell className="h-5 w-5" />
+            <span className="absolute right-2.5 top-2.5 h-2.5 w-2.5 rounded-full bg-danger ring-2 ring-void" />
+          </button>
+
+          <button type="button" className="btn btn-primary">
+            <Plus className="h-4 w-4" />
+            <span className="hidden sm:inline">Neu</span>
+          </button>
+        </div>
       </div>
     </header>
   );

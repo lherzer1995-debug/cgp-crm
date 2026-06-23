@@ -1,191 +1,195 @@
-import { cn } from '../../utils/cn';
 import {
-  LayoutDashboard, Users, ClipboardList, Calendar, Settings,
-  Search, ChevronLeft, ChevronRight, LogOut, Wrench, Command, Sparkles,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  ClipboardList,
+  LayoutDashboard,
+  LogOut,
+  Search,
+  Settings,
+  Sparkles,
+  Users,
+  Wrench,
 } from 'lucide-react';
+import { cn } from '../../utils/cn';
 
 export type Page = 'dashboard' | 'kunden' | 'aufgaben' | 'einsaetze' | 'kalender' | 'einstellungen';
 
 interface Props {
   current: Page;
-  onNav: (p: Page) => void;
+  onNav: (page: Page) => void;
   collapsed: boolean;
   onToggle: () => void;
+  mobileOpen?: boolean;
+  isMobile?: boolean;
 }
 
-const nav: { id: Page; label: string; icon: React.ElementType }[] = [
+const navigation: { id: Page; label: string; icon: React.ElementType; badge?: string }[] = [
   { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { id: 'kunden', label: 'Kunden', icon: Users },
-  { id: 'aufgaben', label: 'Aufgaben', icon: ClipboardList },
+  { id: 'aufgaben', label: 'Aufgaben', icon: ClipboardList, badge: '8' },
   { id: 'einsaetze', label: 'Einsätze', icon: Wrench },
   { id: 'kalender', label: 'Kalender', icon: Calendar },
   { id: 'einstellungen', label: 'Einstellungen', icon: Settings },
 ];
 
-export default function Sidebar({ current, onNav, collapsed, onToggle }: Props) {
+export default function Sidebar({ current, onNav, collapsed, onToggle, mobileOpen = false, isMobile = false }: Props) {
+  const visible = !isMobile || mobileOpen;
+
   return (
-    <aside className={cn(
-      'fixed left-0 top-0 h-screen z-50 flex flex-col',
-      'bg-obsidian/95 backdrop-blur-2xl',
-      'border-r border-white/[0.02]',
-      'transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
-      collapsed ? 'w-[72px]' : 'w-[260px]'
-    )}>
-      {/* ═══ Logo ═══ */}
-      <div className="h-[64px] flex items-center px-5 shrink-0">
-        <div className="flex items-center gap-3">
-          <div className={cn(
-            'w-10 h-10 rounded-[14px] flex items-center justify-center shrink-0',
-            'bg-gradient-to-br from-primary to-violet',
-            'shadow-lg shadow-primary/20',
-            'relative overflow-hidden'
-          )}>
-            <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
-            <Sparkles className="w-5 h-5 text-white relative z-10" />
+    <aside
+      className={cn(
+        'fixed left-0 top-0 z-50 flex h-[100dvh] flex-col',
+        'border-r border-white/[0.08] bg-obsidian/88 backdrop-blur-2xl',
+        'shadow-[24px_0_80px_rgba(0,0,0,.32)]',
+        'transition-all duration-300 ease-[cubic-bezier(.16,1,.3,1)]',
+        collapsed ? 'w-[84px]' : 'w-[284px]',
+        isMobile && 'w-[292px]',
+        isMobile && !visible && '-translate-x-full',
+        isMobile && visible && 'translate-x-0'
+      )}
+    >
+      <div className="flex h-[76px] shrink-0 items-center justify-between px-5">
+        <button
+          type="button"
+          onClick={() => onNav('dashboard')}
+          className="flex min-w-0 items-center gap-3 rounded-2xl text-left"
+          aria-label="Zum Dashboard"
+        >
+          <div className="relative flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary to-violet shadow-lg shadow-primary/25">
+            <div className="absolute inset-0 bg-gradient-to-t from-black/25 to-white/10" />
+            <Sparkles className="relative z-10 h-5 w-5 text-white" />
           </div>
+
           {!collapsed && (
-            <div className="animate-in">
-              <div className="flex items-baseline gap-0.5">
-                <span className="text-[17px] font-bold tracking-tight text-white">CGP</span>
-                <span className="text-[17px] font-light tracking-tight text-mist">CRM</span>
+            <div className="min-w-0 animate-in">
+              <div className="flex items-baseline gap-1">
+                <span className="text-[20px] font-extrabold tracking-[-0.045em] text-white">CGP</span>
+                <span className="text-[20px] font-semibold tracking-[-0.045em] text-mist">CRM</span>
               </div>
-              <p className="text-[9px] text-ash tracking-wide uppercase">Enterprise</p>
+              <p className="text-[12px] font-bold uppercase tracking-[0.16em] text-ash">Service Suite</p>
             </div>
           )}
-        </div>
+        </button>
+
+        {!isMobile && !collapsed && (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="flex h-9 w-9 items-center justify-center rounded-xl text-ash hover:bg-white/[0.06] hover:text-white"
+            aria-label="Sidebar einklappen"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
-      {/* ═══ Search ═══ */}
       {!collapsed && (
-        <div className="px-4 pb-3 animate-in">
-          <button className={cn(
-            'w-full flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl',
-            'bg-white/[0.02] border border-white/[0.04]',
-            'text-[13px] text-ash',
-            'hover:bg-white/[0.04] hover:border-white/[0.06]',
-            'transition-all duration-200 group'
-          )}>
-            <Search className="w-4 h-4 text-smoke group-hover:text-mist transition-colors" />
-            <span className="flex-1 text-left">Suchen…</span>
-            <kbd className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-white/[0.04] text-[10px] font-medium text-smoke">
-              <Command className="w-2.5 h-2.5" />K
-            </kbd>
+        <div className="px-4 pb-4">
+          <button
+            type="button"
+            className={cn(
+              'flex h-12 w-full items-center gap-3 rounded-2xl px-4 text-left',
+              'border border-white/[0.08] bg-white/[0.045] text-[14px] text-ash',
+              'hover:border-white/[0.14] hover:bg-white/[0.07] hover:text-mist',
+              'transition-all duration-200'
+            )}
+          >
+            <Search className="h-4 w-4" />
+            <span className="flex-1">Suchen…</span>
+            <kbd className="rounded-lg bg-white/[0.07] px-2 py-1 text-[12px] font-bold text-smoke">⌘K</kbd>
           </button>
         </div>
       )}
 
-      {/* ═══ Navigation ═══ */}
-      <nav className="flex-1 px-3 py-2 space-y-1 overflow-y-auto">
+      <nav className="flex-1 space-y-1.5 overflow-y-auto px-3 py-2">
         {!collapsed && (
-          <p className="px-3 pt-1 pb-2 text-micro text-ash/60">Navigation</p>
+          <p className="px-3 pb-2 text-[12px] font-bold uppercase tracking-[0.14em] text-ash/80">Navigation</p>
         )}
-        {nav.map((item, idx) => {
+
+        {navigation.map((item, index) => {
           const Icon = item.icon;
           const active = current === item.id;
+
           return (
             <button
               key={item.id}
+              type="button"
               onClick={() => onNav(item.id)}
-              style={{ animationDelay: `${idx * 30}ms` }}
+              style={{ animationDelay: `${index * 25}ms` }}
               className={cn(
-                'w-full flex items-center gap-3 rounded-xl',
-                'transition-all duration-200 group relative',
-                collapsed ? 'justify-center p-3' : 'px-3.5 py-2.5',
-                active 
-                  ? 'bg-primary/8 text-primary-light' 
-                  : 'text-mist hover:text-white hover:bg-white/[0.03]',
+                'group relative flex w-full items-center rounded-2xl transition-all duration-200',
+                collapsed ? 'justify-center p-3.5' : 'gap-3 px-3.5 py-3',
+                active
+                  ? 'bg-white/[0.075] text-white shadow-[inset_0_0_0_1px_rgba(255,255,255,.08)]'
+                  : 'text-smoke hover:bg-white/[0.045] hover:text-white',
                 !collapsed && 'animate-slide-r'
               )}
             >
               {active && (
-                <div className={cn(
-                  'absolute left-0 top-1/2 -translate-y-1/2',
-                  'w-[3px] h-5 rounded-r-full',
-                  'bg-gradient-to-b from-primary-light to-primary',
-                  'shadow-[0_0_8px_rgba(99,102,241,0.5)]'
-                )} />
+                <span className="absolute left-0 top-1/2 h-7 w-1 -translate-y-1/2 rounded-r-full bg-gradient-to-b from-primary-light to-primary shadow-[0_0_18px_rgba(99,91,255,.55)]" />
               )}
-              
-              <div className={cn(
-                'relative flex items-center justify-center',
-                collapsed ? 'w-5 h-5' : 'w-[18px] h-[18px]'
-              )}>
-                <Icon className={cn(
-                  'w-full h-full transition-all duration-200',
-                  active ? 'text-primary-light' : 'text-smoke group-hover:text-white'
-                )} strokeWidth={active ? 2 : 1.5} />
-                {active && (
-                  <div className="absolute inset-0 bg-primary/30 blur-md" />
+
+              <span
+                className={cn(
+                  'flex h-10 w-10 shrink-0 items-center justify-center rounded-xl transition-all duration-200',
+                  active ? 'bg-primary/16 text-primary-light' : 'bg-white/[0.035] text-ash group-hover:text-white'
                 )}
-              </div>
-              
+              >
+                <Icon className="h-5 w-5" strokeWidth={active ? 2.2 : 1.8} />
+              </span>
+
               {!collapsed && (
-                <span className="text-[13px] font-medium">{item.label}</span>
+                <>
+                  <span className="flex-1 text-left text-[15px] font-bold">{item.label}</span>
+                  {item.badge && (
+                    <span className="rounded-full bg-primary/16 px-2 py-0.5 text-[12px] font-extrabold text-primary-soft">
+                      {item.badge}
+                    </span>
+                  )}
+                </>
               )}
-              
+
               {collapsed && (
-                <div className={cn(
-                  'absolute left-full ml-3 px-3 py-1.5',
-                  'bg-slate border border-white/[0.06] rounded-lg',
-                  'text-[12px] font-medium text-white whitespace-nowrap',
-                  'opacity-0 group-hover:opacity-100 pointer-events-none',
-                  'transition-all duration-200 shadow-xl shadow-black/30',
-                  'translate-x-1 group-hover:translate-x-0'
-                )}>
+                <span className="pointer-events-none absolute left-full ml-3 translate-x-1 whitespace-nowrap rounded-xl border border-white/[0.08] bg-slate px-3 py-2 text-[13px] font-bold text-white opacity-0 shadow-2xl shadow-black/40 transition-all group-hover:translate-x-0 group-hover:opacity-100">
                   {item.label}
-                </div>
+                </span>
               )}
             </button>
           );
         })}
       </nav>
 
-      {/* ═══ Bottom ═══ */}
-      <div className="px-3 py-4 space-y-2 border-t border-white/[0.02]">
-        <button
-          onClick={onToggle}
-          className={cn(
-            'w-full flex items-center justify-center gap-2',
-            'px-3 py-2 rounded-xl',
-            'text-[12px] font-medium text-smoke',
-            'hover:text-white hover:bg-white/[0.03]',
-            'transition-all duration-200'
-          )}
-        >
-          {collapsed ? (
-            <ChevronRight className="w-4 h-4" />
-          ) : (
-            <>
-              <ChevronLeft className="w-4 h-4" />
-              <span className="animate-in">Einklappen</span>
-            </>
-          )}
-        </button>
+      <div className="space-y-3 border-t border-white/[0.08] p-3">
+        {!isMobile && collapsed && (
+          <button
+            type="button"
+            onClick={onToggle}
+            className="flex w-full items-center justify-center rounded-2xl p-3 text-ash hover:bg-white/[0.05] hover:text-white"
+            aria-label="Sidebar ausklappen"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        )}
 
         {!collapsed && (
-          <div className={cn(
-            'flex items-center gap-3 px-3 py-2.5 rounded-xl',
-            'bg-gradient-to-r from-white/[0.02] to-transparent',
-            'border border-white/[0.03]',
-            'animate-in'
-          )}>
-            <div className={cn(
-              'w-9 h-9 rounded-xl',
-              'bg-gradient-to-br from-primary to-violet',
-              'flex items-center justify-center',
-              'text-[11px] font-bold text-white',
-              'shadow-lg shadow-primary/15',
-              'shrink-0'
-            )}>
-              LH
+          <div className="rounded-3xl border border-white/[0.08] bg-white/[0.045] p-3">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-violet text-[13px] font-extrabold text-white shadow-lg shadow-primary/20">
+                LH
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-[15px] font-extrabold text-white">Lars Herzer</p>
+                <p className="truncate text-[13px] text-smoke">Administrator</p>
+              </div>
+              <button
+                type="button"
+                className="flex h-9 w-9 items-center justify-center rounded-xl text-ash hover:bg-white/[0.06] hover:text-danger"
+                aria-label="Abmelden"
+              >
+                <LogOut className="h-4 w-4" />
+              </button>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-[13px] font-medium text-white truncate">Lars Herzer</p>
-              <p className="text-[10px] text-smoke">Administrator</p>
-            </div>
-            <button className="p-1.5 rounded-lg hover:bg-white/[0.05] transition-colors group">
-              <LogOut className="w-4 h-4 text-smoke group-hover:text-danger transition-colors" />
-            </button>
           </div>
         )}
       </div>

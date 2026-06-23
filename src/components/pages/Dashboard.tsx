@@ -17,21 +17,23 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
   const recentCustomers = customers.slice(0, 4);
 
   return (
-    <div className="p-8 space-y-8 overflow-y-auto h-[calc(100vh-64px)]">
+    <div className="p-4 sm:p-6 lg:p-8 space-y-8 overflow-y-auto min-h-[calc(100dvh-76px)]">
       
       {/* ═══════════════════════════════════════════════════════════
          WELCOME HERO
          ═══════════════════════════════════════════════════════════ */}
       <div className={cn(
-        'relative overflow-hidden rounded-2xl',
+        'relative overflow-hidden rounded-[22px]',
         'bg-gradient-to-br from-graphite via-carbon to-obsidian',
-        'border border-white/[0.03]',
-        'p-8'
+        'border border-white/[0.08]',
+        'p-4 sm:p-6 lg:p-8'
       )}>
+        {/* Background Effects */}
         <div className="absolute top-0 right-0 w-[500px] h-[300px] bg-primary/5 rounded-full blur-[100px]" />
         <div className="absolute bottom-0 left-1/4 w-[400px] h-[200px] bg-violet/5 rounded-full blur-[80px]" />
         <div className="absolute inset-0 bg-gradient-to-t from-obsidian/50 to-transparent" />
         
+        {/* Content */}
         <div className="relative z-10 flex items-center justify-between">
           <div className="space-y-3">
             <div className="flex items-center gap-2">
@@ -46,6 +48,7 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
               und <span className="text-warning font-semibold">{kpi.urgentTasks} dringende Aufgaben</span> für heute.
             </p>
             
+            {/* Quick Stats */}
             <div className="flex items-center gap-6 pt-4">
               <div className="flex items-center gap-2">
                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center">
@@ -53,7 +56,7 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
                 </div>
                 <div>
                   <p className="text-[20px] font-bold text-white">{kpi.completedServices}</p>
-                  <p className="text-[10px] text-smoke uppercase tracking-wider">Erledigt</p>
+                  <p className="text-[15px] text-smoke uppercase tracking-wider">Erledigt</p>
                 </div>
               </div>
               <div className="w-px h-10 bg-white/[0.06]" />
@@ -63,12 +66,13 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
                 </div>
                 <div>
                   <p className="text-[20px] font-bold text-white">{kpi.activeCustomers}</p>
-                  <p className="text-[10px] text-smoke uppercase tracking-wider">Aktive Kunden</p>
+                  <p className="text-[15px] text-smoke uppercase tracking-wider">Aktive Kunden</p>
                 </div>
               </div>
             </div>
           </div>
 
+          {/* Right Side - Time */}
           <div className="hidden xl:block text-right">
             <p className="text-[48px] font-bold text-white/10 tracking-tight">
               {new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })}
@@ -126,7 +130,7 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
             <div className="flex items-start justify-between mb-4">
               <div 
                 className={cn(
-                  'w-11 h-11 rounded-xl flex items-center justify-center',
+                  'w-11 h-11 rounded-2xl flex items-center justify-center',
                   'transition-transform duration-300 group-hover:scale-110'
                 )}
                 style={{ background: `${k.color}12` }}
@@ -135,7 +139,7 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
               </div>
               {k.trend && (
                 <span className={cn(
-                  'text-[10px] font-semibold px-2 py-1 rounded-full',
+                  'text-[15px] font-semibold px-2 py-1 rounded-full',
                   k.trend.startsWith('+') 
                     ? 'bg-success/10 text-success' 
                     : 'bg-danger/10 text-danger'
@@ -148,7 +152,8 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
             <p className="text-[28px] font-bold text-white tracking-tight">{k.value}</p>
             <p className="text-caption text-smoke mt-1">{k.sub}</p>
             
-            <div className="mt-4 h-1 bg-white/[0.03] rounded-full overflow-hidden">
+            {/* Progress Bar */}
+            <div className="mt-4 h-1 bg-white/[0.055] rounded-full overflow-hidden">
               <div 
                 className="h-full rounded-full transition-all duration-1000 ease-out"
                 style={{ 
@@ -170,12 +175,12 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
         <div className="lg:col-span-3 card p-6">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-info/10 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-2xl bg-info/10 flex items-center justify-center">
                 <Wrench className="w-4 h-4 text-info" />
               </div>
               <div>
                 <h2 className="text-heading text-white">Heutige Einsätze</h2>
-                <p className="text-[11px] text-smoke">{todayServices.length} anstehend</p>
+                <p className="text-[15px] text-smoke">{todayServices.length} anstehend</p>
               </div>
             </div>
             <button 
@@ -190,7 +195,7 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
           <div className="space-y-2">
             {todayServices.length === 0 && (
               <div className="py-12 text-center">
-                <div className="w-12 h-12 rounded-2xl bg-white/[0.02] flex items-center justify-center mx-auto mb-3">
+                <div className="w-12 h-12 rounded-[22px] bg-white/[0.045] flex items-center justify-center mx-auto mb-3">
                   <Zap className="w-6 h-6 text-smoke" />
                 </div>
                 <p className="text-body text-smoke">Keine Einsätze für heute</p>
@@ -210,47 +215,52 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
                 <div 
                   key={ev.id}
                   className={cn(
-                    'flex items-center gap-4 p-4 rounded-xl',
-                    'bg-white/[0.01] border border-white/[0.02]',
-                    'hover:bg-white/[0.02] hover:border-white/[0.04]',
+                    'flex items-center gap-4 p-4 rounded-2xl',
+                    'bg-white/[0.01] border border-white/[0.08]',
+                    'hover:bg-white/[0.045] hover:border-white/[0.09]',
                     'transition-all duration-200 cursor-pointer group',
                     'animate-in'
                   )}
                   style={{ animationDelay: `${idx * 40}ms` }}
                 >
+                  {/* Time */}
                   <div className="w-14 shrink-0">
                     <p className="text-[15px] font-semibold text-white">{ev.startTime}</p>
-                    <p className="text-[10px] text-smoke">{ev.endTime}</p>
+                    <p className="text-[15px] text-smoke">{ev.endTime}</p>
                   </div>
                   
-                  <div className="w-px h-10 bg-white/[0.04]" />
+                  {/* Divider */}
+                  <div className="w-px h-10 bg-white/[0.07]" />
                   
+                  {/* Content */}
                   <div className="flex-1 min-w-0">
                     <p className="text-body font-medium text-white truncate group-hover:text-primary-light transition-colors">
                       {ev.customerName}
                     </p>
                     <div className="flex items-center gap-3 mt-1">
-                      <span className="flex items-center gap-1.5 text-[11px] text-smoke">
+                      <span className="flex items-center gap-1.5 text-[15px] text-smoke">
                         <MapPin className="w-3 h-3" />
                         {ev.customerAddress.split(',')[0]}
                       </span>
-                      <span className="flex items-center gap-1.5 text-[11px] text-smoke">
+                      <span className="flex items-center gap-1.5 text-[15px] text-smoke">
                         <Clock className="w-3 h-3" />
                         {ev.title}
                       </span>
                     </div>
                   </div>
 
+                  {/* Status */}
                   <div className={cn(
                     'flex items-center gap-1.5 px-2.5 py-1 rounded-full shrink-0',
                     st.bg
                   )}>
                     <div className={cn('w-1.5 h-1.5 rounded-full', st.dot)} />
-                    <span className={cn('text-[10px] font-semibold uppercase tracking-wide', st.text)}>
+                    <span className={cn('text-[15px] font-semibold uppercase tracking-wide', st.text)}>
                       {ev.status}
                     </span>
                   </div>
 
+                  {/* Arrow */}
                   <ArrowUpRight className="w-4 h-4 text-smoke opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
                 </div>
               );
@@ -262,12 +272,12 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
         <div className="lg:col-span-2 card p-6">
           <div className="flex items-center justify-between mb-5">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">
+              <div className="w-9 h-9 rounded-2xl bg-primary/10 flex items-center justify-center">
                 <Users className="w-4 h-4 text-primary-light" />
               </div>
               <div>
                 <h2 className="text-heading text-white">Aktuelle Kunden</h2>
-                <p className="text-[11px] text-smoke">Zuletzt bearbeitet</p>
+                <p className="text-[15px] text-smoke">Zuletzt bearbeitet</p>
               </div>
             </div>
             <button 
@@ -284,14 +294,14 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
               <div 
                 key={c.id}
                 className={cn(
-                  'flex items-center gap-3 p-3 rounded-xl',
-                  'hover:bg-white/[0.02] transition-all duration-200 cursor-pointer group',
+                  'flex items-center gap-3 p-3 rounded-2xl',
+                  'hover:bg-white/[0.045] transition-all duration-200 cursor-pointer group',
                   'animate-in'
                 )}
                 style={{ animationDelay: `${idx * 40}ms` }}
               >
                 <div 
-                  className="w-10 h-10 rounded-xl flex items-center justify-center text-[11px] font-bold text-white shrink-0"
+                  className="w-10 h-10 rounded-2xl flex items-center justify-center text-[15px] font-bold text-white shrink-0"
                   style={{ background: `linear-gradient(135deg, ${c.avatar}, ${c.avatar}99)` }}
                 >
                   {c.name.split(' ').map(w => w[0]).join('').slice(0, 2)}
@@ -300,11 +310,11 @@ export default function Dashboard({ onNav }: { onNav: (p: Page) => void }) {
                   <p className="text-body font-medium text-white truncate group-hover:text-primary-light transition-colors">
                     {c.name}
                   </p>
-                  <p className="text-[11px] text-smoke truncate">{c.city} · {c.contacts[0]?.name}</p>
+                  <p className="text-[15px] text-smoke truncate">{c.city} · {c.contacts[0]?.name}</p>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="text-caption font-semibold text-white">{c.serviceCount}</p>
-                  <p className="text-[10px] text-smoke">Einsätze</p>
+                  <p className="text-[15px] text-smoke">Einsätze</p>
                 </div>
               </div>
             ))}
