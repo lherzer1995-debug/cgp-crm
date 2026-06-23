@@ -95,3 +95,40 @@ export function FeedbackToast({
     </div>
   );
 }
+
+
+export function Modal({
+  open,
+  title,
+  description,
+  children,
+  onClose,
+  footer,
+}: {
+  open: boolean;
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  footer?: React.ReactNode;
+}) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center p-4">
+      <button
+        type="button"
+        aria-label="Dialog schließen"
+        onClick={onClose}
+        className="absolute inset-0 bg-black/70 backdrop-blur-sm"
+      />
+      <div className="relative z-10 w-full max-w-3xl overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#0f1622] shadow-[0_30px_80px_rgba(0,0,0,0.45)]">
+        <div className="border-b border-white/[0.08] px-6 py-5">
+          <h3 className="text-[22px] font-semibold tracking-[-0.04em] text-white">{title}</h3>
+          {description ? <p className="mt-1 text-[14px] leading-6 text-smoke">{description}</p> : null}
+        </div>
+        <div className="max-h-[70dvh] overflow-y-auto px-6 py-5">{children}</div>
+        {footer ? <div className="flex items-center justify-end gap-3 border-t border-white/[0.08] px-6 py-4">{footer}</div> : null}
+      </div>
+    </div>
+  );
+}

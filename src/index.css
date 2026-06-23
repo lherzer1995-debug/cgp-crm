@@ -175,3 +175,44 @@ html[data-theme="light"] body {
   color: #121826;
   background: #f5f7fb;
 }
+
+
+select.field,
+select,
+.field select {
+  color-scheme: dark;
+}
+
+select option,
+.field option {
+  background-color: #101722;
+  color: #eef2f8;
+}
+
+select option:hover,
+.field option:hover,
+select option:checked,
+.field option:checked {
+  background-color: #1a2332;
+  color: #ffffff;
+}
+
+select:disabled,
+input:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.field-error {
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.field-label {
+  margin-bottom: 0.45rem;
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #bcc5d3;
+}

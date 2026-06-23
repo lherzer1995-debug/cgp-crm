@@ -59,7 +59,7 @@ interface AppStoreContextValue {
   clearFeedback: () => void;
   setFeedback: (value: UiFeedback | null) => void;
   updateSettings: (patch: Partial<SettingsState>) => void;
-  addCustomer: (payload: { name: string; city: string; email: string }) => void;
+  addCustomer: (payload: { name: string; city: string; email: string; address?: string; zip?: string; phone?: string; status?: CustomerStatus; priority?: TaskPriority; contactName?: string; contactRole?: string; contactPhone?: string; contactEmail?: string; tags?: string[] }) => void;
   updateCustomerStatus: (customerId: string, status: CustomerStatus) => void;
   addCustomerTag: (customerId: string, tag: string) => void;
   addCustomerNote: (customerId: string, payload: { content: string; type: NoteType; pinned?: boolean }) => void;
@@ -236,27 +236,40 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
       pushError('Bitte einen Kundennamen eingeben.');
       return;
     }
+
+    const cleanEmail = payload.email.trim();
+    if (!cleanEmail) {
+      pushError('Bitte eine E-Mail-Adresse eingeben.');
+      return;
+    }
+
+    const cleanCity = payload.city.trim();
+    if (!cleanCity) {
+      pushError('Bitte einen Ort angeben.');
+      return;
+    }
+
     const customer: Customer = {
       id: uid('c'),
       name: cleanName,
-      address: 'Adresse ergänzen',
-      city: payload.city.trim() || 'Ort ergänzen',
-      zip: '00000',
-      phone: '+49',
-      email: payload.email.trim(),
+      address: payload.address?.trim() || 'Adresse ergänzen',
+      city: cleanCity,
+      zip: payload.zip?.trim() || '00000',
+      phone: payload.phone?.trim() || '+49',
+      email: cleanEmail,
       contacts: [
         {
           id: uid('cp'),
-          name: cleanName,
-          role: 'Ansprechpartner',
-          phone: '+49',
-          email: payload.email.trim(),
+          name: payload.contactName?.trim() || cleanName,
+          role: payload.contactRole?.trim() || 'Ansprechpartner',
+          phone: payload.contactPhone?.trim() || payload.phone?.trim() || '+49',
+          email: payload.contactEmail?.trim() || cleanEmail,
           isPrimary: true,
         },
       ],
-      status: 'wartet',
-      priority: 'mittel',
-      tags: [],
+      status: payload.status || 'wartet',
+      priority: payload.priority || 'mittel',
+      tags: payload.tags || [],
       customerSince: isoDate(),
       lastService: isoDate(),
       nextService: undefined,
