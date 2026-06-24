@@ -3,7 +3,7 @@ import { useAppStore } from '../../data/app-store';
 import { SectionHeader } from '../ui/common';
 
 export default function Einstellungen() {
-  const { settings, updateSettings, resetDemoData, viewer } = useAppStore();
+  const { settings, updateSettings, resetDemoData, viewer, systemHealth } = useAppStore();
 
   return (
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
@@ -42,6 +42,28 @@ export default function Einstellungen() {
           </div>
         </section>
       </div>
+
+
+      <section className="rounded-[28px] border border-white/[0.08] bg-white/[0.03] p-6">
+        <h2 className="text-[18px] font-semibold text-white">Betriebsstatus</h2>
+        <div className="mt-5 grid gap-4 md:grid-cols-3">
+          <div className="rounded-2xl border border-white/[0.08] bg-black/15 p-4">
+            <p className="text-[12px] uppercase tracking-[0.14em] text-smoke">Viewer</p>
+            <p className="mt-2 text-[18px] font-semibold text-white">{viewer.name}</p>
+            <p className="mt-1 text-[13px] text-smoke">{viewer.role}</p>
+          </div>
+          <div className="rounded-2xl border border-white/[0.08] bg-black/15 p-4">
+            <p className="text-[12px] uppercase tracking-[0.14em] text-smoke">Storage</p>
+            <p className="mt-2 text-[18px] font-semibold text-white">{systemHealth?.storage || 'unbekannt'}</p>
+            <p className="mt-1 text-[13px] text-smoke">{systemHealth?.ok ? 'verbunden' : systemHealth?.message || 'nicht erreichbar'}</p>
+          </div>
+          <div className="rounded-2xl border border-white/[0.08] bg-black/15 p-4">
+            <p className="text-[12px] uppercase tracking-[0.14em] text-smoke">Version</p>
+            <p className="mt-2 text-[18px] font-semibold text-white">{systemHealth?.version || 'unbekannt'}</p>
+            <p className="mt-1 text-[13px] text-smoke">Serverstart {systemHealth?.startedAt || '—'}</p>
+          </div>
+        </div>
+      </section>
 
       <section className="rounded-[28px] border border-danger/20 bg-danger/6 p-6">
         <h2 className="text-[18px] font-semibold text-white">Workspace zurücksetzen</h2>

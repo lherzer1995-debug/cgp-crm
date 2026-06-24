@@ -4,65 +4,83 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { clerkMiddleware, getAuth } from '@clerk/express';
 import { WorkspaceStore } from './workspace-store.mjs';
+import { createWorkspaceRepository } from './db.mjs';
+import { deriveRoleFromEnv, fail } from './authz.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const rootDir = path.resolve(__dirname, '..');
 const distDir = path.join(rootDir, 'dist');
-const dataDir = process.env.DATA_DIR || path.join(rootDir, '.data');
 const port = Number(process.env.PORT || 8080);
+const startedAt = new Date().toISOString();
+const version = process.env.APP_VERSION || '2026.06-premium';
 
-const store = new WorkspaceStore(dataDir);
+const repository = createWorkspaceRepository();
+const store = new WorkspaceStore(repository);
 const app = express();
 
 app.use(express.json({ limit: '1mb' }));
 app.use(clerkMiddleware());
 
-function deriveRole(userId) {
-  const admins = (process.env.APP_ADMIN_USER_IDS || '').split(',').map((entry) => entry.trim()).filter(Boolean);
-  const managers = (process.env.APP_MANAGER_USER_IDS || '').split(',').map((entry) => entry.trim()).filter(Boolean);
-  const technicians = (process.env.APP_TECHNICIAN_USER_IDS || '').split(',').map((entry) => entry.trim()).filter(Boolean);
-  if (admins.includes(userId)) return 'admin';
-  if (managers.includes(userId)) return 'manager';
-  if (technicians.includes(userId)) return 'techniker';
-  return 'dispatcher';
-}
-
-function getViewer(req) {
+app.use(async (req, _res, next) => {
+  req.requestId = `req_${Math.random().toString(36).slice(2, 10)}`;
   const auth = getAuth(req);
-  if (!auth.userId) return { userId: null, role: 'anonymous', name: 'Gast', email: '' };
-  const claims = auth.sessionClaims || {};
-  return {
+  req.viewer = auth?.userId ? {
     userId: auth.userId,
-    role: deriveRole(auth.userId),
-    name: claims.fullName || claims.full_name || claims.given_name || claims.email || auth.userId,
-    email: claims.email || '',
-  };
+    role: deriveRoleFromEnv(auth.userId),
+    name: auth.sessionClaims?.fullName || auth.sessionClaims?.full_name || auth.sessionClaims?.given_name || auth.sessionClaims?.email || auth.userId,
+    email: auth.sessionClaims?.email || '',
+  } : { userId: null, role: 'anonymous', name: 'Gast', email: '' };
+  await repository.log({
+    level: 'info',
+    code: 'REQUEST',
+    message: `${req.method} ${req.path}`,
+    meta: { requestId: req.requestId, role: req.viewer.role, userId: req.viewer.userId },
+  }).catch(() => {});
+  next();
+});
+
+function requireApiAuth(req, _res, next) {
+  if (!req.viewer?.userId) return next(fail(401, 'AUTH_REQUIRED', 'Nicht authentifiziert.'));
+  next();
 }
 
-function requireApiAuth(req, res, next) {
-  const auth = getAuth(req);
-  if (!auth.userId) {
-    return res.status(401).json({ error: 'Nicht authentifiziert.' });
+app.get('/api/health', async (_req, res, next) => {
+  try {
+    const storage = await repository.health();
+    res.json({
+      ok: storage.ok,
+      version,
+      runtime: 'railway-ready',
+      storage,
+      startedAt,
+      now: new Date().toISOString(),
+    });
+  } catch (error) {
+    next(error);
   }
-  return next();
-}
-
-app.get('/api/health', (_req, res) => {
-  res.json({ ok: true, runtime: 'railway-ready', updatedAt: new Date().toISOString() });
 });
 
-app.get('/api/bootstrap', requireApiAuth, (req, res) => {
-  res.json(store.getSnapshot(getViewer(req)));
+app.get('/api/version', (_req, res) => {
+  res.json({ version, startedAt, runtime: 'node-express' });
 });
 
-app.post('/api/actions', requireApiAuth, (req, res) => {
+app.get('/api/bootstrap', requireApiAuth, async (req, res, next) => {
+  try {
+    res.json(await store.getSnapshot(req.viewer));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.post('/api/actions', requireApiAuth, async (req, res, next) => {
   try {
     const { action, payload } = req.body || {};
-    const next = store.applyAction(action, payload || {}, getViewer(req));
-    res.json({ ...next, viewer: getViewer(req) });
+    if (!action) throw fail(400, 'ACTION_REQUIRED', 'Aktion fehlt.');
+    const nextState = await store.applyAction(action, payload || {}, req.viewer);
+    res.json({ ...nextState, viewer: req.viewer });
   } catch (error) {
-    res.status(400).json({ error: error instanceof Error ? error.message : 'Aktion konnte nicht verarbeitet werden.' });
+    next(error);
   }
 });
 
@@ -70,6 +88,23 @@ app.use(express.static(distDir));
 
 app.get('*', (_req, res) => {
   res.sendFile(path.join(distDir, 'index.html'));
+});
+
+app.use(async (error, req, res, _next) => {
+  const status = error.statusCode || 500;
+  const code = error.code || 'INTERNAL_ERROR';
+  const message = error.message || 'Interner Serverfehler.';
+  await repository.log({
+    level: status >= 500 ? 'error' : 'warning',
+    code,
+    message,
+    meta: { requestId: req.requestId, path: req.path, method: req.method, role: req.viewer?.role, userId: req.viewer?.userId },
+  }).catch(() => {});
+  res.status(status).json({
+    error: message,
+    code,
+    requestId: req.requestId,
+  });
 });
 
 app.listen(port, () => {

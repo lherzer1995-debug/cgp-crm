@@ -49,18 +49,18 @@ export function AuthShell({ children }: { children: ReactNode }) {
           <div className="min-h-screen bg-[#0b0f17] p-6 text-white">
             <div className="mx-auto mt-12 grid max-w-6xl gap-6 lg:grid-cols-[1.1fr_.9fr]">
               <section className="rounded-[32px] border border-white/[0.08] bg-[#111722] p-8">
-                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-smoke">Service Operations CRM</p>
+                <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-smoke">Service Operations CRM für Außendienst und Einsatzplanung</p>
                 <h1 className="mt-4 max-w-xl text-[44px] font-semibold tracking-[-0.06em] leading-[1.02]">
-                  Einsätze, Aufgaben und Kundenkontext in einer Arbeitsoberfläche.
+                  Weniger Koordinationschaos. Mehr Verantwortung, Planungssicherheit und Kundenkontext.
                 </h1>
                 <p className="mt-4 max-w-xl text-[16px] leading-7 text-smoke">
-                  Kein generisches CRM, sondern ein operatives Werkzeug für Servicebetriebe mit Außendienst, Rückrufen und belastbaren Übergaben.
+                  Für Teams, die Termine, Rückrufe, Servicefälle und Verantwortlichkeit nicht in fünf Tools verteilen wollen. Das Produkt priorisiert Tageslage, Einsatzsteuerung und saubere Übergaben statt Dashboard-Deko.
                 </p>
                 <div className="mt-8 grid gap-3 md:grid-cols-3">
                   {[
-                    ['Tageslage statt Dashboard-Show', 'überfällige Aufgaben, Risikokunden und offene Einsätze zuerst'],
-                    ['Nachvollziehbare Arbeit', 'Statuswechsel, Notizen und Verantwortung bleiben sichtbar'],
-                    ['Schnell planbar', 'Einsätze, Folgeaufgaben und Kalendereinträge ohne Kontextverlust'],
+                    ['Tagessteuerung statt Dashboard-Show', 'überfällige Aufgaben, Risikokunden und offene Einsätze zuerst'],
+                    ['Verantwortung bleibt sichtbar', 'Statuswechsel, Notizen und Verantwortung bleiben sichtbar'],
+                    ['Planung mit Konsequenz', 'Einsätze, Folgeaufgaben und Kalendereinträge ohne Kontextverlust'],
                   ].map(([title, text]) => (
                     <div key={title} className="rounded-3xl border border-white/[0.08] bg-black/15 p-4">
                       <p className="text-[14px] font-semibold text-white">{title}</p>

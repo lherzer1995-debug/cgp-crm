@@ -30,12 +30,22 @@ interface ViewerState {
   email: string;
 }
 
+interface SystemHealthState {
+  ok: boolean;
+  storage: string;
+  version: string;
+  startedAt: string;
+  now: string;
+  message?: string;
+}
+
 interface AppStoreContextValue {
   customers: Customer[];
   serviceEvents: ServiceEvent[];
   team: TeamMember[];
   settings: SettingsState;
   viewer: ViewerState;
+  systemHealth: SystemHealthState | null;
   isBooting: boolean;
   saveState: 'idle' | 'saving' | 'saved';
   feedback: UiFeedback | null;
@@ -96,6 +106,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SettingsState>(defaultSettings);
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [viewer, setViewer] = useState<ViewerState>({ userId: null, role: 'anonymous', name: 'Gast', email: '' });
+  const [systemHealth, setSystemHealth] = useState<SystemHealthState | null>(null);
   const [isBooting, setIsBooting] = useState(true);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [feedback, setFeedback] = useState<UiFeedback | null>(null);
@@ -126,10 +137,28 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     return data;
   }, [getToken]);
 
+  const loadHealth = useCallback(async () => {
+    try {
+      const response = await fetch(apiUrl('/api/health'));
+      const data = await response.json();
+      setSystemHealth({
+        ok: Boolean(data.ok),
+        storage: data.storage?.storage || data.storage || 'unknown',
+        version: data.version || 'unknown',
+        startedAt: data.startedAt || '',
+        now: data.now || '',
+        message: data.storage?.message || undefined,
+      });
+    } catch {
+      setSystemHealth({ ok: false, storage: 'unknown', version: 'unknown', startedAt: '', now: '', message: 'Healthcheck nicht erreichbar.' });
+    }
+  }, []);
+
   const reloadWorkspace = useCallback(async () => {
     if (!isLoaded) return;
     setIsBooting(true);
     try {
+      await loadHealth();
       const data = await request('/api/bootstrap');
       applySnapshot(data);
     } catch (error) {
@@ -137,7 +166,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     } finally {
       setIsBooting(false);
     }
-  }, [applySnapshot, isLoaded, request]);
+  }, [applySnapshot, isLoaded, request, loadHealth]);
 
   useEffect(() => {
     if (!isLoaded) return;
@@ -179,6 +208,7 @@ export function AppStoreProvider({ children }: { children: ReactNode }) {
     team,
     settings,
     viewer,
+    systemHealth,
     isBooting,
     saveState,
     feedback,
