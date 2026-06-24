@@ -3,8 +3,7 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 
-ARG VITE_CLERK_PUBLISHABLE_KEY
-ENV VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
+ARG CLERK_PUBLISHABLE
 ENV npm_config_registry=https://registry.npmjs.org/
 ENV npm_config_audit=false
 ENV npm_config_fund=false
@@ -13,7 +12,7 @@ COPY package.json package-lock.json .npmrc ./
 RUN npm ci --include=dev --no-audit --no-fund
 
 COPY . .
-RUN npm run build
+RUN VITE_CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE" npm run build
 
 FROM node:22-alpine AS runner
 WORKDIR /app
