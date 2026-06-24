@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS builder
+FROM node:22-bookworm-slim AS builder
 WORKDIR /app
 
 ARG CLERK_PUBLISHABLE
@@ -14,7 +14,7 @@ RUN npm ci --include=dev --no-audit --no-fund
 COPY . .
 RUN VITE_CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE" npm run build
 
-FROM node:22-alpine AS runner
+FROM node:22-bookworm-slim AS runner
 WORKDIR /app
 
 ENV NODE_ENV=production
