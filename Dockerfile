@@ -13,7 +13,7 @@ FROM base AS builder
 
 ARG VITE_CLERK_PUBLISHABLE_KEY
 
-COPY package.json .npmrc ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm install --include=dev --no-audit --no-fund
 
 COPY . .
@@ -25,7 +25,7 @@ FROM base AS runner
 ENV NODE_ENV=production
 ENV PORT=8080
 
-COPY package.json .npmrc ./
+COPY package.json package-lock.json .npmrc ./
 RUN npm install --omit=dev --no-audit --no-fund
 
 COPY --from=builder /app/dist ./dist

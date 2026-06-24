@@ -21,10 +21,10 @@ export function MissingClerkConfig() {
         <div className="mt-6 rounded-3xl border border-white/[0.08] bg-black/15 p-5">
           <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-smoke">Railway Setup</p>
           <ol className="mt-3 space-y-3 text-[14px] leading-6 text-mist">
-            <li>1. In Clerk eine React-App anlegen und den Publishable Key kopieren.</li>
-            <li>2. In Railway unter Variables <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">VITE_CLERK_PUBLISHABLE_KEY</code> setzen.</li>
-            <li>3. Optional Redirects ergänzen: <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">VITE_CLERK_SIGN_IN_FALLBACK_REDIRECT_URL=/</code> und <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">VITE_CLERK_SIGN_UP_FALLBACK_REDIRECT_URL=/</code>.</li>
-            <li>4. Neu deployen, damit Vite die Build-Variable in das Frontend-Bundle schreibt.</li>
+            <li>1. In Clerk den Publishable Key und den Secret Key aus dem Dashboard kopieren.</li>
+            <li>2. In Railway setzen: <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">VITE_CLERK_PUBLISHABLE_KEY</code>, <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">CLERK_SECRET_KEY</code>, <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">APP_ADMIN_USER_IDS</code> und <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">DATA_DIR=/data</code>.</li>
+            <li>3. Prüfe, dass das Railway-Volume auf <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">/data</code> gemountet ist und die Clerk-Domain in der Clerk-Konsole freigegeben wurde.</li>
+            <li>4. Neu deployen, damit Vite den Frontend-Key ins Bundle schreibt und der Server zur Laufzeit den Secret Key laden kann.</li>
           </ol>
         </div>
       </div>
