@@ -1,30 +1,35 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS builder
+FROM node:20-bookworm-slim AS base
 WORKDIR /app
 
-ARG VITE_CLERK_PUBLISHABLE_KEY
-ENV VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
+RUN npm install -g npm@11.17.0
+
 ENV npm_config_registry=https://registry.npmjs.org/
 ENV npm_config_audit=false
 ENV npm_config_fund=false
 
-COPY package.json package-lock.json .npmrc ./
-RUN npm install --no-audit --no-fund
+FROM base AS builder
+
+ARG VITE_CLERK_PUBLISHABLE_KEY
+
+COPY package.json .npmrc ./
+RUN npm install --include=dev --no-audit --no-fund
 
 COPY . .
-RUN npm run build
+RUN test -n "$VITE_CLERK_PUBLISHABLE_KEY" || (echo "Missing VITE_CLERK_PUBLISHABLE_KEY" && exit 1)
+RUN VITE_CLERK_PUBLISHABLE_KEY="$VITE_CLERK_PUBLISHABLE_KEY" npm run build
 
-FROM node:22-alpine AS runner
-WORKDIR /app
+FROM base AS runner
+
 ENV NODE_ENV=production
 ENV PORT=8080
 
-COPY package.json package-lock.json .npmrc ./
+COPY package.json .npmrc ./
 RUN npm install --omit=dev --no-audit --no-fund
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
 
 EXPOSE 8080
-CMD ["npm", "run", "start"]
+CMD ["node", "server/index.mjs"]
