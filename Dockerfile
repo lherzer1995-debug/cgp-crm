@@ -1,24 +1,30 @@
 # syntax=docker/dockerfile:1
 
-# ── Stage 1: Build React/Vite app ──────────────────────────
 FROM node:22-alpine AS builder
-
 WORKDIR /app
+
+ARG VITE_CLERK_PUBLISHABLE_KEY
+ENV VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
 ENV npm_config_registry=https://registry.npmjs.org/
 ENV npm_config_audit=false
 ENV npm_config_fund=false
 
 COPY package.json package-lock.json .npmrc ./
-RUN npm ci --include=dev --no-audit --no-fund
+RUN npm install --no-audit --no-fund
 
 COPY . .
-ENV NODE_ENV=production
 RUN npm run build
 
-# ── Stage 2: Serve SPA with Caddy ──────────────────────────
-FROM caddy:2-alpine AS runner
+FROM node:22-alpine AS runner
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=8080
 
-COPY Caddyfile /etc/caddy/Caddyfile
-COPY --from=builder /app/dist /usr/share/caddy
+COPY package.json package-lock.json .npmrc ./
+RUN npm install --omit=dev --no-audit --no-fund
+
+COPY --from=builder /app/dist ./dist
+COPY --from=builder /app/server ./server
 
 EXPOSE 8080
+CMD ["npm", "run", "start"]

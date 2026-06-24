@@ -1,74 +1,36 @@
-# CGP CRM Pro — Optimized Railway Build
+# CGP CRM – Railway + Clerk + API
 
-Diese Version wurde aus `cgp-crm-pro.zip` erzeugt und als aktueller Projektstand behandelt.
+## Required variables
 
-## Was geändert wurde
+Frontend build:
+- `VITE_CLERK_PUBLISHABLE_KEY`
 
-- Railway-Deployment auf Docker + Caddy stabilisiert.
-- `Caddyfile` auf Railway-Port `${PORT}` mit Fallback `8080` umgestellt.
-- SPA-Fallback ergänzt: `try_files {path} /index.html`.
-- Gzip/Zstd-Kompression und Basis-Security-Header ergänzt.
-- `.dockerignore` ergänzt, damit `.env`, `node_modules`, `dist` und Git-Artefakte nicht ins Image kopiert werden.
-- `.npmrc` auf öffentliche npm Registry fixiert.
-- `package-lock.json` von internen Registry-URLs bereinigt.
-- `package.json` mit `overrides.esbuild=0.28.1` ergänzt, damit `npm audit` sauber ist.
-- App-Viewport-Handling in `App.tsx` robuster gemacht.
-- `.env` wurde wegen Secrets bewusst NICHT in dieses ZIP übernommen.
+Backend runtime:
+- `CLERK_SECRET_KEY`
+- `APP_ADMIN_USER_IDS` comma-separated Clerk user IDs
+- `APP_MANAGER_USER_IDS` optional
+- `APP_TECHNICIAN_USER_IDS` optional
+- `DATA_DIR` optional path for persistent workspace data, e.g. `/data`
 
-## Railway Deployment
-
-Railway sollte wegen des vorhandenen `Dockerfile` automatisch den Docker Builder nutzen.
-
-Erforderliche Dateien im Repo-Root:
-
-- `Dockerfile`
-- `Caddyfile`
-- `.dockerignore`
-- `.npmrc`
-- `package.json`
-- `package-lock.json`
-
-### Railway Start
-
-Keine manuelle Start-Command-Konfiguration nötig. Caddy startet im Runtime-Image.
-
-### Wichtig
-
-Setze Secrets ausschließlich in Railway Variables, nicht in `.env` committen.
-
-## Lokale Prüfung
-
-Ausgeführt:
+## Local development
 
 ```bash
-npm ci --no-audit --no-fund --registry=https://registry.npmjs.org/
-npm run build
-npm audit
+npm install
+export VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
+export CLERK_SECRET_KEY=sk_test_...
+npm run dev
 ```
 
-Ergebnis:
+- Vite runs on `http://localhost:5173`
+- API runs on `http://localhost:8080`
+- Vite proxies `/api` to the API server
 
-```text
-npm ci: erfolgreich
-npm run build: erfolgreich
-npm audit: found 0 vulnerabilities
-```
+## Railway
 
-Build-Auszug:
+Set:
+- `VITE_CLERK_PUBLISHABLE_KEY`
+- `CLERK_SECRET_KEY`
+- `APP_ADMIN_USER_IDS`
+- `DATA_DIR=/data` if you mount a persistent volume
 
-```text
-vite v7.3.5 building client environment for production...
-✓ 1789 modules transformed.
-dist/index.html                 0.70 kB │ gzip: 0.41 kB
-dist/assets/index-D8rd2Nj0.css 63.21 kB │ gzip: 10.59 kB
-dist/assets/index-DX4qNtqi.js 332.85 kB │ gzip: 95.85 kB
-✓ built
-```
-
-## Nächste empfohlene Schritte
-
-1. Dieses ZIP entpacken.
-2. Inhalt ins Git-Repo übernehmen.
-3. Prüfen, dass `.env` nicht committed wird.
-4. Änderungen committen und zu Railway pushen.
-5. In Railway prüfen, dass Docker Builder verwendet wird.
+The Docker image builds the frontend and serves both SPA and API from the same service.

@@ -3,6 +3,7 @@ import { Calendar, Mail, MapPin, Phone, Plus, Search, User, Wrench, X } from 'lu
 import { cn } from '../../utils/cn';
 import { getInitials, useAppStore } from '../../data/app-store';
 import { EmptyState, Modal, SectionHeader, StatusBadge } from '../ui/common';
+import { QuickTagModal, ServiceCreateModal, TaskCreateModal } from '../ui/workflow-modals';
 import type { CustomerStatus, NoteType, TaskPriority } from '../../data/store';
 
 const customerStates: CustomerStatus[] = ['aktiv', 'wartet', 'risiko', 'archiviert'];
@@ -41,7 +42,7 @@ const initialCustomerForm: CustomerFormState = {
 };
 
 export default function Kunden({ search }: { search: string }) {
-  const { customers, addCustomer, addCustomerNote, addCustomerTag, addTask, addServiceEvent, updateCustomerStatus } = useAppStore();
+  const { customers, addCustomer, addCustomerNote, addCustomerTag, updateCustomerStatus } = useAppStore();
   const [localSearch, setLocalSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'all' | CustomerStatus>('all');
   const [selectedId, setSelectedId] = useState<string | null>(customers[0]?.id || null);
@@ -51,6 +52,9 @@ export default function Kunden({ search }: { search: string }) {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [customerForm, setCustomerForm] = useState<CustomerFormState>(initialCustomerForm);
   const [customerErrors, setCustomerErrors] = useState<Partial<Record<keyof CustomerFormState, string>>>({});
+  const [isTagOpen, setIsTagOpen] = useState(false);
+  const [isTaskOpen, setIsTaskOpen] = useState(false);
+  const [isServiceOpen, setIsServiceOpen] = useState(false);
 
   const query = (search || localSearch).toLowerCase();
   const filtered = useMemo(() => {
@@ -66,6 +70,15 @@ export default function Kunden({ search }: { search: string }) {
   }, [customers, query, statusFilter]);
 
   const selected = customers.find((customer) => customer.id === selectedId) || null;
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: string }>).detail;
+      if (detail?.type === 'customer') setIsCreateOpen(true);
+    };
+    window.addEventListener('crm:create', handler as EventListener);
+    return () => window.removeEventListener('crm:create', handler as EventListener);
+  }, []);
 
   useEffect(() => {
     if (!selectedId && filtered[0]?.id) {
@@ -263,8 +276,8 @@ export default function Kunden({ search }: { search: string }) {
                 <div className="mt-5 grid grid-cols-2 gap-2">
                   <button onClick={() => window.location.href = `tel:${selected.phone}`} className="btn btn-secondary"><Phone className="h-4 w-4" />Anrufen</button>
                   <button onClick={() => window.location.href = `mailto:${selected.email}`} className="btn btn-secondary"><Mail className="h-4 w-4" />E-Mail</button>
-                  <button onClick={() => addTask({ customerId: selected.id, title: 'Rückruf an Kunden' })} className="btn btn-secondary"><User className="h-4 w-4" />Aufgabe</button>
-                  <button onClick={() => addServiceEvent({ customerId: selected.id, title: 'Serviceeinsatz', date: '2026-06-24' })} className="btn btn-secondary"><Wrench className="h-4 w-4" />Einsatz</button>
+                  <button onClick={() => setIsTaskOpen(true)} className="btn btn-secondary"><User className="h-4 w-4" />Aufgabe</button>
+                  <button onClick={() => setIsServiceOpen(true)} className="btn btn-secondary"><Wrench className="h-4 w-4" />Einsatz</button>
                 </div>
               </div>
 
@@ -284,10 +297,7 @@ export default function Kunden({ search }: { search: string }) {
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-smoke">Tags</p>
                       <button
-                        onClick={() => {
-                          const tag = window.prompt('Tag ergänzen');
-                          if (tag) addCustomerTag(selected.id, tag);
-                        }}
+                        onClick={() => setIsTagOpen(true)}
                         className="text-[13px] text-primary-light hover:text-white"
                       >
                         + hinzufügen
@@ -498,6 +508,10 @@ export default function Kunden({ search }: { search: string }) {
           </section>
         </div>
       </Modal>
+
+      <QuickTagModal open={isTagOpen} onClose={() => setIsTagOpen(false)} onSubmit={(tag) => selected && addCustomerTag(selected.id, tag)} />
+      <TaskCreateModal open={isTaskOpen} onClose={() => setIsTaskOpen(false)} initialCustomerId={selected?.id} />
+      <ServiceCreateModal open={isServiceOpen} onClose={() => setIsServiceOpen(false)} initialCustomerId={selected?.id} />
     </>
   );
 }

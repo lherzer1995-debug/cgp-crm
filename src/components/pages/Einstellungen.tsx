@@ -3,7 +3,7 @@ import { useAppStore } from '../../data/app-store';
 import { SectionHeader } from '../ui/common';
 
 export default function Einstellungen() {
-  const { settings, updateSettings, resetDemoData } = useAppStore();
+  const { settings, updateSettings, resetDemoData, viewer } = useAppStore();
 
   return (
     <div className="space-y-6 p-4 sm:p-6 lg:p-8">
