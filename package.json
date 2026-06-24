@@ -4,16 +4,17 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "concurrently -k \"node server/index.mjs\" \"vite\"",
+    "dev": "concurrently \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:web": "vite",
+    "dev:api": "node --watch server/index.mjs",
     "build": "vite build",
-    "preview": "vite preview",
-    "start": "node server/index.mjs"
+    "start": "node server/index.mjs",
+    "preview": "vite preview"
   },
   "dependencies": {
     "@clerk/express": "2.1.31",
     "@clerk/react": "6.11.0",
     "clsx": "2.1.1",
-    "concurrently": "^9.2.1",
     "express": "^4.21.2",
     "framer-motion": "^12.41.0",
     "lucide-react": "^1.21.0",
@@ -28,6 +29,7 @@
     "@types/react": "19.2.7",
     "@types/react-dom": "19.2.3",
     "@vitejs/plugin-react": "5.1.1",
+    "concurrently": "^9.2.1",
     "tailwindcss": "4.1.17",
     "typescript": "5.9.3",
     "vite": "^7.3.5"

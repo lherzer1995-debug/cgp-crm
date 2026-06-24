@@ -1,31 +1,31 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS builder
+FROM node:20-bookworm-slim AS base
 WORKDIR /app
 
-ARG VITE_CLERK_PUBLISHABLE_KEY
-ENV VITE_CLERK_PUBLISHABLE_KEY=${VITE_CLERK_PUBLISHABLE_KEY}
+RUN npm install -g npm@11.17.0
+
 ENV npm_config_registry=https://registry.npmjs.org/
 ENV npm_config_audit=false
 ENV npm_config_fund=false
 
-COPY package.json package-lock.json .npmrc ./
-RUN npm ci --include=dev --no-audit --no-fund
+FROM base AS builder
+
+ARG CLERK_PUBLISHABLE
+
+COPY package.json .npmrc ./
+RUN npm install --include=dev --no-audit --no-fund
 
 COPY . .
-RUN npm run build
+RUN VITE_CLERK_PUBLISHABLE_KEY="$CLERK_PUBLISHABLE" npm run build
 
-FROM node:22-alpine AS runner
-WORKDIR /app
+FROM base AS runner
 
 ENV NODE_ENV=production
 ENV PORT=8080
-ENV npm_config_registry=https://registry.npmjs.org/
-ENV npm_config_audit=false
-ENV npm_config_fund=false
 
-COPY package.json package-lock.json .npmrc ./
-RUN npm ci --omit=dev --no-audit --no-fund
+COPY package.json .npmrc ./
+RUN npm install --omit=dev --no-audit --no-fund
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/server ./server
