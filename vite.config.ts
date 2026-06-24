@@ -1,25 +1,10 @@
-import path from "path";
-import { fileURLToPath } from "url";
-import tailwindcss from "@tailwindcss/vite";
-import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-export default defineConfig({
-  plugins: [react(), tailwindcss()],
-  resolve: {
-    alias: {
-      "@": path.resolve(__dirname, "src"),
-    },
-  },
-  server: {
-    proxy: {
-      "/api": {
-        target: "http://localhost:8080",
-        changeOrigin: true,
-      },
-    },
-  },
-});
+VITE_CLERK_PUBLISHABLE_KEY=pk_test_xxx
+CLERK_SECRET_KEY=sk_test_xxx
+APP_ADMIN_USER_IDS=user_admin
+APP_MANAGER_USER_IDS=user_manager
+APP_DISPATCHER_USER_IDS=user_dispatcher
+APP_TECHNICIAN_USER_IDS=user_techniker
+DATA_DIR=/data
+DATABASE_URL=postgresql://...
+PGSSL=require
+PORT=8080

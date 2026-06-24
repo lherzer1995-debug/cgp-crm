@@ -1,0 +1,218 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --color-void: #090d13;
+  --color-obsidian: #0d121b;
+  --color-panel: #111722;
+  --color-muted: #9ea9ba;
+  --color-cloud: #eef2f8;
+  --color-primary: #6366f1;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
+  --color-info: #38bdf8;
+  --color-violet: #8b5cf6;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  color-scheme: dark;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  min-height: 100dvh;
+  margin: 0;
+  color: var(--color-cloud);
+  background: linear-gradient(180deg, #090d13 0%, #0d121b 100%);
+}
+
+#root {
+  min-height: 100dvh;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+button {
+  -webkit-tap-highlight-color: transparent;
+}
+
+::selection {
+  background: rgba(99, 102, 241, 0.28);
+  color: white;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  border: 3px solid transparent;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.15);
+  background-clip: padding-box;
+}
+
+*:focus-visible {
+  outline: 2px solid rgba(99, 102, 241, 0.88);
+  outline-offset: 2px;
+}
+
+.app-shell {
+  min-height: 100dvh;
+  background:
+    radial-gradient(circle at top right, rgba(99, 102, 241, 0.12), transparent 34rem),
+    linear-gradient(180deg, #090d13 0%, #0d121b 100%);
+}
+
+.app-main,
+.app-content {
+  min-height: 100dvh;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  border-radius: 1rem;
+  border: 1px solid transparent;
+  padding: 0.7rem 1rem;
+  font-size: 0.92rem;
+  font-weight: 600;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease, transform 180ms ease;
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, rgba(99, 102, 241, 0.92), rgba(79, 70, 229, 0.92));
+  color: white;
+  box-shadow: 0 14px 30px rgba(79, 70, 229, 0.22);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(180deg, rgba(120, 122, 245, 0.95), rgba(88, 80, 234, 0.95));
+}
+
+.btn-secondary {
+  border-color: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  color: #e6eaf2;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.chip {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.5rem 0.85rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  color: #bcc5d3;
+  transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
+}
+
+.chip:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: white;
+}
+
+.chip-active {
+  border-color: rgba(99, 102, 241, 0.36);
+  background: rgba(99, 102, 241, 0.16);
+  color: #d9deff;
+}
+
+.field {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.85rem 1rem;
+  color: #eef2f8;
+}
+
+.field::placeholder {
+  color: #8d99aa;
+}
+
+.field:focus {
+  border-color: rgba(99, 102, 241, 0.4);
+  outline: none;
+}
+
+[data-theme="light"] body,
+html[data-theme="light"] body {
+  color: #121826;
+  background: #f5f7fb;
+}
+
+
+select.field,
+select,
+.field select {
+  color-scheme: dark;
+}
+
+select option,
+.field option {
+  background-color: #101722;
+  color: #eef2f8;
+}
+
+select option:hover,
+.field option:hover,
+select option:checked,
+.field option:checked {
+  background-color: #1a2332;
+  color: #ffffff;
+}
+
+select:disabled,
+input:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.field-error {
+  border-color: rgba(239, 68, 68, 0.5);
+}
+
+.field-label {
+  margin-bottom: 0.45rem;
+  display: block;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #bcc5d3;
+}

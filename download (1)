@@ -1,0 +1,120 @@
+import { ClerkLoaded, ClerkLoading, Show, SignIn } from '@clerk/react';
+import { ArrowRight, ShieldCheck, Wrench, ClipboardList, Route, Users } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { SkeletonBlock, StatusBadge } from '../ui/common';
+
+function OutcomeCard({ icon: Icon, title, text }: { icon: React.ElementType; title: string; text: string }) {
+  return (
+    <div className="rounded-[28px] border border-white/[0.08] bg-black/15 p-5">
+      <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/[0.06] text-primary-light">
+        <Icon className="h-4 w-4" />
+      </div>
+      <p className="mt-4 text-[15px] font-semibold text-white">{title}</p>
+      <p className="mt-2 text-[13px] leading-6 text-smoke">{text}</p>
+    </div>
+  );
+}
+
+export function MissingClerkConfig() {
+  return (
+    <div className="min-h-screen bg-[#0b0f17] p-6 text-white">
+      <div className="mx-auto mt-16 max-w-3xl rounded-[32px] border border-warning/25 bg-[#111722] p-8 shadow-2xl">
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-warning/10 text-warning">
+            <ShieldCheck className="h-5 w-5" />
+          </div>
+          <div>
+            <h1 className="text-[28px] font-semibold tracking-[-0.04em]">Clerk ist noch nicht konfiguriert</h1>
+            <p className="mt-1 text-[14px] text-smoke">Ohne Build-Key und Server-Secret startet die Anmeldung nicht.</p>
+          </div>
+        </div>
+
+        <div className="mt-6 rounded-3xl border border-white/[0.08] bg-black/15 p-5">
+          <p className="text-[13px] font-semibold uppercase tracking-[0.14em] text-smoke">Railway Setup</p>
+          <ol className="mt-3 space-y-3 text-[14px] leading-6 text-mist">
+            <li>1. In Clerk den Publishable Key und den Secret Key aus dem Dashboard kopieren.</li>
+            <li>2. In Railway setzen: <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">VITE_CLERK_PUBLISHABLE_KEY</code>, <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">CLERK_SECRET_KEY</code>, <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">APP_ADMIN_USER_IDS</code> und <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">DATA_DIR=/data</code>.</li>
+            <li>3. Prüfe, dass das Railway-Volume auf <code className="rounded bg-white/[0.08] px-1.5 py-0.5 text-cloud">/data</code> gemountet ist.</li>
+            <li>4. Neu deployen, damit Vite den Frontend-Key ins Bundle schreibt und der Server zur Laufzeit den Secret Key laden kann.</li>
+          </ol>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function AuthShell({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <ClerkLoading>
+        <div className="min-h-screen bg-[#0b0f17] p-6">
+          <div className="mx-auto mt-16 max-w-6xl space-y-4">
+            <SkeletonBlock className="h-24" />
+            <div className="grid gap-5 lg:grid-cols-[1.2fr_.8fr]">
+              <SkeletonBlock className="h-[520px]" />
+              <SkeletonBlock className="h-[520px]" />
+            </div>
+          </div>
+        </div>
+      </ClerkLoading>
+
+      <ClerkLoaded>
+        <Show when="signed-out">
+          <div className="min-h-screen bg-[#0b0f17] p-6 text-white">
+            <div className="mx-auto mt-10 grid max-w-6xl gap-6 lg:grid-cols-[1.12fr_.88fr]">
+              <section className="rounded-[32px] border border-white/[0.08] bg-[#111722] p-8">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusBadge tone="info">Service Operations CRM</StatusBadge>
+                  <StatusBadge tone="warning">für Disposition, Einsatzsteuerung und Kundenkontext</StatusBadge>
+                </div>
+                <h1 className="mt-5 max-w-3xl text-[46px] font-semibold tracking-[-0.06em] leading-[1.02]">
+                  Das System für Teams, die Außendienst, Kundenfälle und Verantwortlichkeit nicht mehr in fünf Tools verstreuen wollen.
+                </h1>
+                <p className="mt-4 max-w-2xl text-[16px] leading-7 text-smoke">
+                  Statt Dashboard-Deko bekommst du Tagessteuerung, saubere Übergaben, belastbare Einsatzplanung und nachvollziehbare Verantwortung. Gebaut für Servicebetriebe, die jeden Tag mit echten Fristen, Rückrufen und Feldarbeit leben.
+                </p>
+
+                <div className="mt-8 grid gap-4 md:grid-cols-2">
+                  <OutcomeCard icon={Route} title="Disposition mit Konsequenz" text="Einsätze, Rückmeldungen und Folgeaktionen bleiben im selben Arbeitsfluss statt in Listen ohne Kontext." />
+                  <OutcomeCard icon={ClipboardList} title="Aufgaben mit Eigentümerschaft" text="Fälligkeit, Verantwortlichkeit und Historie bleiben sichtbar – auch wenn der Tag chaotisch wird." />
+                  <OutcomeCard icon={Users} title="Kundenfälle statt Datensätze" text="Jeder Kunde zeigt offenen Druck, letzte Aktivität, Risiken und nächsten sinnvollen Schritt." />
+                  <OutcomeCard icon={Wrench} title="Feldarbeit ohne Blindflug" text="Techniker sehen ihre Arbeit, Disposition sieht Engpässe, Führung sieht Servicequalität." />
+                </div>
+
+                <div className="mt-8 rounded-[28px] border border-white/[0.08] bg-black/20 p-5">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-smoke">Was ein Käufer sofort versteht</p>
+                  <ul className="mt-4 space-y-3 text-[14px] leading-6 text-mist">
+                    <li className="flex items-start gap-2"><ArrowRight className="mt-1 h-4 w-4 text-primary-light" />Weniger Koordinationschaos im Tagesgeschäft</li>
+                    <li className="flex items-start gap-2"><ArrowRight className="mt-1 h-4 w-4 text-primary-light" />Klare Zuständigkeiten statt informeller Übergaben</li>
+                    <li className="flex items-start gap-2"><ArrowRight className="mt-1 h-4 w-4 text-primary-light" />Servicefälle, Einsätze und Aufgaben im selben operativen System</li>
+                  </ul>
+                </div>
+              </section>
+
+              <section className="rounded-[32px] border border-white/[0.08] bg-[#0f1622] p-6 shadow-2xl">
+                <div className="mb-5">
+                  <p className="text-[12px] font-semibold uppercase tracking-[0.16em] text-smoke">Anmeldung</p>
+                  <h2 className="mt-2 text-[28px] font-semibold tracking-[-0.04em] text-white">Zugang zum Arbeitsbereich</h2>
+                  <p className="mt-2 text-[14px] leading-6 text-smoke">
+                    Clerk schützt den Zugriff, die API erzwingt Rollenrechte und das System zeigt danach nur die Aktionen, die im Tagesgeschäft wirklich erlaubt sind.
+                  </p>
+                </div>
+                <SignIn
+                  routing="hash"
+                  appearance={{
+                    elements: {
+                      rootBox: 'w-full',
+                      card: 'shadow-none bg-transparent border-0',
+                    },
+                  }}
+                />
+              </section>
+            </div>
+          </div>
+        </Show>
+
+        <Show when="signed-in">{children}</Show>
+      </ClerkLoaded>
+    </>
+  );
+}

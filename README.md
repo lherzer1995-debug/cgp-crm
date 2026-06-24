@@ -1,36 +1,80 @@
-# CGP CRM – Railway + Clerk + API
+import type { AppRole } from '../data/app-store';
 
-## Required variables
+export interface RoleViewer {
+  role: AppRole;
+  name?: string;
+  email?: string;
+  userId?: string | null;
+}
 
-Frontend build:
-- `VITE_CLERK_PUBLISHABLE_KEY`
+export function hasAnyRole(viewer: RoleViewer, roles: AppRole[]) {
+  return roles.includes(viewer.role);
+}
 
-Backend runtime:
-- `CLERK_SECRET_KEY`
-- `APP_ADMIN_USER_IDS` comma-separated Clerk user IDs
-- `APP_MANAGER_USER_IDS` optional
-- `APP_TECHNICIAN_USER_IDS` optional
-- `DATA_DIR` optional path for persistent workspace data, e.g. `/data`
+export function isPlanner(viewer: RoleViewer) {
+  return hasAnyRole(viewer, ['admin', 'manager', 'dispatcher']);
+}
 
-## Local development
+export function isManagerial(viewer: RoleViewer) {
+  return hasAnyRole(viewer, ['admin', 'manager']);
+}
 
-```bash
-npm install
-export VITE_CLERK_PUBLISHABLE_KEY=pk_test_...
-export CLERK_SECRET_KEY=sk_test_...
-npm run dev
-```
+export function isFieldTechnician(viewer: RoleViewer) {
+  return viewer.role === 'techniker';
+}
 
-- Vite runs on `http://localhost:5173`
-- API runs on `http://localhost:8080`
-- Vite proxies `/api` to the API server
+export function canCreateCustomer(viewer: RoleViewer) {
+  return isPlanner(viewer);
+}
 
-## Railway
+export function canCreateTask(viewer: RoleViewer) {
+  return isPlanner(viewer);
+}
 
-Set:
-- `VITE_CLERK_PUBLISHABLE_KEY`
-- `CLERK_SECRET_KEY`
-- `APP_ADMIN_USER_IDS`
-- `DATA_DIR=/data` if you mount a persistent volume
+export function canPlanService(viewer: RoleViewer) {
+  return isPlanner(viewer);
+}
 
-The Docker image builds the frontend and serves both SPA and API from the same service.
+export function canEditSettings(viewer: RoleViewer) {
+  return isManagerial(viewer);
+}
+
+export function roleLabel(role: AppRole) {
+  return {
+    admin: 'Admin',
+    manager: 'Serviceleitung',
+    dispatcher: 'Disposition',
+    techniker: 'Techniker',
+    anonymous: 'Gast',
+  }[role];
+}
+
+export function roleDescription(role: AppRole) {
+  return {
+    admin: 'volle Systemkontrolle, Richtlinien und Betriebsstatus',
+    manager: 'Teamsteuerung, Qualität und operative Freigaben',
+    dispatcher: 'Einsatzplanung, Triage und Koordination',
+    techniker: 'eigene Einsätze, Rückmeldungen und Abschlussarbeit',
+    anonymous: 'keine freigeschalteten Aktionen',
+  }[role];
+}
+
+export function roleHomeLabel(role: AppRole) {
+  return {
+    admin: 'Systemlage',
+    manager: 'Teamlage',
+    dispatcher: 'Dispositionslage',
+    techniker: 'Mein Arbeitstag',
+    anonymous: 'Übersicht',
+  }[role];
+}
+
+export function canSeeActivityEntry(viewer: RoleViewer, entry: { visibility?: 'all' | 'office' | 'assignee'; actor?: string; handoffTo?: string }) {
+  if (!entry.visibility || entry.visibility === 'all') return true;
+  if (entry.visibility === 'office') return !isFieldTechnician(viewer);
+  return entry.actor === viewer.name || entry.handoffTo === viewer.name;
+}
+
+export function canAccessOps(viewer: RoleViewer) {
+  return isManagerial(viewer);
+}
