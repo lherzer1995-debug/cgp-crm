@@ -27,7 +27,8 @@ export default function Kalender({ search }: { search: string }) {
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ type?: string }>).detail;
+      const detail = (event as CustomEvent<{ type?: string; source?: string }>).detail;
+      if (detail?.source === 'header') return;
       if (detail?.type === 'service') setCreateServiceOpen(true);
       if (detail?.type === 'task') setCreateTaskOpen(true);
     };

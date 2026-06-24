@@ -27,7 +27,8 @@ export default function Einsaetze({ search }: { search: string }) {
 
   useEffect(() => {
     const handler = (event: Event) => {
-      const detail = (event as CustomEvent<{ type?: string }>).detail;
+      const detail = (event as CustomEvent<{ type?: string; source?: string }>).detail;
+      if (detail?.source === 'header') return;
       if (detail?.type === 'service') setIsCreateOpen(true);
     };
     window.addEventListener('crm:create', handler as EventListener);

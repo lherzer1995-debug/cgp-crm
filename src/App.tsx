@@ -8,6 +8,7 @@ import Einsaetze from './components/pages/Einsaetze';
 import Kalender from './components/pages/Kalender';
 import Einstellungen from './components/pages/Einstellungen';
 import { FeedbackToast, SkeletonBlock } from './components/ui/common';
+import { CustomerCreateModal, ServiceCreateModal, TaskCreateModal } from './components/ui/workflow-modals';
 import { useAppStore } from './data/app-store';
 
 export default function App() {
@@ -17,6 +18,7 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [search, setSearch] = useState('');
   const [isMobile, setIsMobile] = useState(false);
+  const [quickCreate, setQuickCreate] = useState<null | 'customer' | 'task' | 'service'>(null);
 
   useEffect(() => {
     const mediaQuery = window.matchMedia('(max-width: 960px)');
@@ -41,6 +43,16 @@ export default function App() {
   }, [isMobile]);
 
   const sidebarWidth = isMobile ? 0 : collapsed ? 88 : 286;
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ type?: 'customer' | 'task' | 'service'; source?: string }>).detail;
+      if (detail?.source !== 'header' || !detail.type) return;
+      setQuickCreate(detail.type);
+    };
+    window.addEventListener('crm:create', handler as EventListener);
+    return () => window.removeEventListener('crm:create', handler as EventListener);
+  }, []);
 
   const pageNode = useMemo(() => {
     const props = { search };
@@ -101,6 +113,9 @@ export default function App() {
       </div>
 
       {feedback ? <FeedbackToast type={feedback.type} message={feedback.message} onClose={clearFeedback} /> : null}
+      <CustomerCreateModal open={quickCreate === 'customer'} onClose={() => setQuickCreate(null)} />
+      <TaskCreateModal open={quickCreate === 'task'} onClose={() => setQuickCreate(null)} />
+      <ServiceCreateModal open={quickCreate === 'service'} onClose={() => setQuickCreate(null)} />
     </div>
   );
 }

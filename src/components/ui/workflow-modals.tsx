@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { Modal } from './common';
 import { useAppStore } from '../../data/app-store';
-import type { TaskPriority } from '../../data/store';
+import type { CustomerStatus, TaskPriority } from '../../data/store';
 
 function FieldShell({
   label,
@@ -386,6 +386,187 @@ export function ServiceNoteModal({
       <FieldShell label="Notiz" error={error}>
         <textarea className={`field min-h-[140px] ${error ? 'field-error' : ''}`} value={value} onChange={(event) => { setValue(event.target.value); setError(''); }} placeholder="z. B. Ersatzteil nicht verfügbar, Rücksprache mit Filialleitung erfolgt, Folgetermin nötig." />
       </FieldShell>
+    </Modal>
+  );
+}
+
+
+type CustomerFormState = {
+  name: string;
+  address: string;
+  zip: string;
+  city: string;
+  phone: string;
+  email: string;
+  status: CustomerStatus;
+  priority: TaskPriority;
+  contactName: string;
+  contactRole: string;
+  contactPhone: string;
+  contactEmail: string;
+  tags: string;
+};
+
+const initialCustomerForm: CustomerFormState = {
+  name: '',
+  address: '',
+  zip: '',
+  city: '',
+  phone: '',
+  email: '',
+  status: 'wartet',
+  priority: 'mittel',
+  contactName: '',
+  contactRole: '',
+  contactPhone: '',
+  contactEmail: '',
+  tags: '',
+};
+
+export function CustomerCreateModal({
+  open,
+  onClose,
+}: {
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { addCustomer } = useAppStore();
+  const [form, setForm] = useState<CustomerFormState>(initialCustomerForm);
+  const [errors, setErrors] = useState<Partial<Record<keyof CustomerFormState, string>>>({});
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    setForm(initialCustomerForm);
+    setErrors({});
+    setIsSubmitting(false);
+  }, [open]);
+
+  const updateField = <K extends keyof CustomerFormState>(key: K, value: CustomerFormState[K]) => {
+    setForm((current) => ({ ...current, [key]: value }));
+    setErrors((current) => ({ ...current, [key]: undefined }));
+  };
+
+  const validate = () => {
+    const nextErrors: Partial<Record<keyof CustomerFormState, string>> = {};
+    if (!form.name.trim()) nextErrors.name = 'Bitte einen Kundennamen eingeben.';
+    if (!form.city.trim()) nextErrors.city = 'Bitte einen Ort eingeben.';
+    if (!form.email.trim()) nextErrors.email = 'Bitte eine E-Mail-Adresse eingeben.';
+    if (!form.contactName.trim()) nextErrors.contactName = 'Bitte einen Ansprechpartner angeben.';
+    if (form.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+      nextErrors.email = 'Bitte eine gültige E-Mail-Adresse eingeben.';
+    }
+    if (form.contactEmail.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.contactEmail.trim())) {
+      nextErrors.contactEmail = 'Bitte eine gültige E-Mail-Adresse eingeben.';
+    }
+    setErrors(nextErrors);
+    return Object.keys(nextErrors).length === 0;
+  };
+
+  const submit = async () => {
+    if (!validate()) return;
+    setIsSubmitting(true);
+    const tags = form.tags.split(',').map((entry) => entry.trim()).filter(Boolean);
+    await addCustomer({
+      name: form.name.trim(),
+      address: form.address.trim(),
+      zip: form.zip.trim(),
+      city: form.city.trim(),
+      phone: form.phone.trim(),
+      email: form.email.trim(),
+      status: form.status,
+      priority: form.priority,
+      contactName: form.contactName.trim(),
+      contactRole: form.contactRole.trim(),
+      contactPhone: form.contactPhone.trim(),
+      contactEmail: form.contactEmail.trim(),
+      tags,
+    });
+    setIsSubmitting(false);
+    onClose();
+  };
+
+  return (
+    <Modal
+      open={open}
+      onClose={() => !isSubmitting && onClose()}
+      title="Neuen Kunden anlegen"
+      description="Lege den Kunden inklusive Ansprechpartner direkt sauber an. So sind Kontakt, Status und Priorisierung sofort vollständig."
+      footer={
+        <>
+          <button className="btn btn-secondary" type="button" onClick={onClose} disabled={isSubmitting}>Abbrechen</button>
+          <button className="btn btn-primary" type="button" onClick={submit} disabled={isSubmitting}>
+            {isSubmitting ? 'Wird angelegt…' : 'Kunde speichern'}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-6">
+        <section>
+          <h4 className="text-[15px] font-semibold text-white">Stammdaten</h4>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="md:col-span-2">
+              <FieldShell label="Firmenname *" error={errors.name}>
+                <input className={`field ${errors.name ? 'field-error' : ''}`} value={form.name} onChange={(event) => updateField('name', event.target.value)} placeholder="z. B. Bäckerei Küster GmbH" />
+              </FieldShell>
+            </div>
+            <FieldShell label="Adresse">
+              <input className="field" value={form.address} onChange={(event) => updateField('address', event.target.value)} placeholder="Straße und Hausnummer" />
+            </FieldShell>
+            <FieldShell label="PLZ">
+              <input className="field" value={form.zip} onChange={(event) => updateField('zip', event.target.value)} placeholder="80331" />
+            </FieldShell>
+            <FieldShell label="Ort *" error={errors.city}>
+              <input className={`field ${errors.city ? 'field-error' : ''}`} value={form.city} onChange={(event) => updateField('city', event.target.value)} placeholder="München" />
+            </FieldShell>
+            <FieldShell label="Telefon">
+              <input className="field" value={form.phone} onChange={(event) => updateField('phone', event.target.value)} placeholder="+49 89 1234567" />
+            </FieldShell>
+            <FieldShell label="E-Mail *" error={errors.email}>
+              <input className={`field ${errors.email ? 'field-error' : ''}`} value={form.email} onChange={(event) => updateField('email', event.target.value)} placeholder="kontakt@kunde.de" />
+            </FieldShell>
+            <FieldShell label="Status">
+              <select className="field" value={form.status} onChange={(event) => updateField('status', event.target.value as CustomerStatus)}>
+                <option value="wartet">Wartet</option>
+                <option value="aktiv">Aktiv</option>
+                <option value="risiko">Risiko</option>
+                <option value="archiviert">Archiviert</option>
+              </select>
+            </FieldShell>
+            <FieldShell label="Priorität">
+              <select className="field" value={form.priority} onChange={(event) => updateField('priority', event.target.value as TaskPriority)}>
+                <option value="niedrig">Niedrig</option>
+                <option value="mittel">Mittel</option>
+                <option value="hoch">Hoch</option>
+                <option value="dringend">Dringend</option>
+              </select>
+            </FieldShell>
+            <div className="md:col-span-2">
+              <FieldShell label="Tags">
+                <input className="field" value={form.tags} onChange={(event) => updateField('tags', event.target.value)} placeholder="z. B. SLA 4h, Schlüsselkunde" />
+              </FieldShell>
+            </div>
+          </div>
+        </section>
+
+        <section>
+          <h4 className="text-[15px] font-semibold text-white">Ansprechpartner</h4>
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <FieldShell label="Name *" error={errors.contactName}>
+              <input className={`field ${errors.contactName ? 'field-error' : ''}`} value={form.contactName} onChange={(event) => updateField('contactName', event.target.value)} placeholder="Vor- und Nachname" />
+            </FieldShell>
+            <FieldShell label="Rolle">
+              <input className="field" value={form.contactRole} onChange={(event) => updateField('contactRole', event.target.value)} placeholder="Filialleitung" />
+            </FieldShell>
+            <FieldShell label="Telefon">
+              <input className="field" value={form.contactPhone} onChange={(event) => updateField('contactPhone', event.target.value)} placeholder="+49 ..." />
+            </FieldShell>
+            <FieldShell label="E-Mail" error={errors.contactEmail}>
+              <input className={`field ${errors.contactEmail ? 'field-error' : ''}`} value={form.contactEmail} onChange={(event) => updateField('contactEmail', event.target.value)} placeholder="ansprechpartner@kunde.de" />
+            </FieldShell>
+          </div>
+        </section>
+      </div>
     </Modal>
   );
 }
